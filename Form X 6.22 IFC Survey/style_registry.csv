@@ -1,0 +1,14 @@
+style_code,style_name,operation,panel_config,shape,n_panels,ifc_predefined_type,ifc_partitioning_type,ifc_panel_operation,optional_refinements,description,status
+WIN-FIXED-SINGLE,Fixed (picture) window,FIXED,SINGLE,RECT,1,WINDOW,SINGLE_PANEL,FIXEDCASEMENT,-ROUND / -ARCH,Non-operable single pane,seed
+WIN-CASEMENT-SINGLE,Single casement,CASEMENT,SINGLE,RECT,1,WINDOW,SINGLE_PANEL,SIDEHUNGLEFTHAND|SIDEHUNGRIGHTHAND,-L / -R,One side-hung operable sash,seed
+WIN-CASEMENT-DBL_V,Double (French) casement,CASEMENT,DBL_V,RECT,2,WINDOW,DOUBLE_PANEL_VERTICAL,"SIDEHUNGLEFTHAND,SIDEHUNGRIGHTHAND",-,Two side-hung sashes at center mullion,seed
+WIN-AWNING-SINGLE,Awning window,AWNING,SINGLE,RECT,1,WINDOW,SINGLE_PANEL,TOPHUNG,-,"Top-hung, opens outward at bottom",seed
+WIN-HOPPER-SINGLE,Hopper window,HOPPER,SINGLE,RECT,1,WINDOW,SINGLE_PANEL,BOTTOMHUNG,-,"Bottom-hung, opens inward at top",seed
+WIN-HUNG-DBL_H,Hung window (sub-type undetermined),HUNG,DBL_H,RECT,2,WINDOW,DOUBLE_PANEL_HORIZONTAL,SLIDINGVERTICAL,->SINGLEHUNG / ->DOUBLEHUNG,Abstract parent (sub-type undetermined); realised as single/double-hung — no standalone golden target,abstract
+WIN-SINGLEHUNG-DBL_H,Single-hung,SINGLEHUNG,DBL_H,RECT,2,WINDOW,DOUBLE_PANEL_HORIZONTAL,SLIDINGVERTICAL,-,Lower sash slides; upper fixed,seed
+WIN-DOUBLEHUNG-DBL_H,Double-hung,DOUBLEHUNG,DBL_H,RECT,2,WINDOW,DOUBLE_PANEL_HORIZONTAL,SLIDINGVERTICAL,-,Both sashes slide vertically,seed
+WIN-SLIDER-DBL_V,"Horizontal slider, 2-panel",SLIDER,DBL_V,RECT,2,WINDOW,DOUBLE_PANEL_VERTICAL,SLIDINGHORIZONTAL,-TRI_V (3-panel),Sashes slide horizontally,seed
+WIN-TILTTURN-SINGLE,Tilt-and-turn,TILTTURN,SINGLE,RECT,1,WINDOW,SINGLE_PANEL,TILTANDTURNLEFTHAND|TILTANDTURNRIGHTHAND,-L / -R,Tilts in at top OR swings in,seed
+WIN-PIVOTH-SINGLE,Horizontal pivot,PIVOTH,SINGLE,RECT,1,WINDOW,SINGLE_PANEL,PIVOTHORIZONTAL,-,Rotates about horizontal axis,seed
+WIN-PIVOTV-SINGLE,Vertical pivot,PIVOTV,SINGLE,RECT,1,WINDOW,SINGLE_PANEL,PIVOTVERTICAL,-,Rotates about vertical axis,seed
+WIN-SKYLIGHT-SINGLE,Skylight / roof window,FIXED,SINGLE,RECT,1,SKYLIGHT,SINGLE_PANEL,FIXEDCASEMENT,->TOPHUNG variant,Roof-plane window; fixed or top-hung,seed

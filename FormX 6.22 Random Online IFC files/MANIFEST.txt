@@ -1,0 +1,23 @@
+Real IFC files from the windows survey — open in OpenIFCViewer.
+Each maps to rows in window_file_survey.csv (column: file).
+
+iso-ref_wall-window_IFC4.ifc  (0.0 MB)
+  buildingSMART ISO reference window — the one we just walked through
+  schema=(see survey) tool= bakedness=
+
+archicad_fzk-haus.ifc  (2.6 MB)
+  ArchiCAD — the richest real file: declares lining+panel props & SIDEHUNG operation
+  schema=(see survey) tool= bakedness=
+
+revit_duplex-apartment.ifc  (2.4 MB)
+  Revit 2011 (IFC2x3) — classic export, swept solids survived
+  schema=(see survey) tool= bakedness=
+
+revit_tested-sample.ifc  (0.7 MB)
+  Revit (IFC2x3) — more baked, explicit geometry
+  schema=(see survey) tool= bakedness=
+
+revit2019_digitalhub_IFC4.ifc  (14.3 MB)
+  Revit 2019 (IFC4) — the modern 'baked' case (tessellated)
+  schema=(see survey) tool= bakedness=
+
