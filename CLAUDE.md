@@ -1,7 +1,8 @@
 # FormX Window IFC Converter — Project Context
 
-**Status:** Pre-implementation. Research, taxonomy, and golden targets are done. No converter code exists yet.
+**Status:** v1 converter built and passing. `IFC Window Converter/IFC_window_converter_V1.py` rebuilds each `IfcWindow` into clean parametric geometry; validated on all three real FormX ADUs (IFC2X3/IFC4/IFC4X3). See Section 4 + the converter's own `algorithm.md`.
 **Scope:** Windows only (first element type in a planned multi-element converter — doors etc. follow later, out of scope here).
+**Environment:** ifcopenshell 0.8.5 installed under `python3.11` (run the converter with `python3.11`). The plain `python3` (3.11 framework build) does NOT have ifcopenshell — there was no pre-existing ifcopenshell env on this machine despite Gal's `.pyc` being cpython-310.
 
 ---
 
@@ -62,16 +63,20 @@ This is **not** mesh-reconstruction. The strategy is promotion onto known templa
 
 ## 4. Current state of artifacts (what already exists)
 
-All built and validated in the research phase preceding this converter. Paths below assume these sit in the project root or are copied in — **update these paths if your repo layout differs.**
+Built and validated in the research phase + the v1 converter build. **Exact paths (these folders contain spaces — the converter imports the .py modules by inserting their dirs on `sys.path`):**
 
 | File | What it is | Status |
 |---|---|---|
-| `style_registry.csv` | Canonical style taxonomy: 13 rows (12 concrete + 1 abstract). `style_code` is the FK every other artifact keys off. Columns include target IFC enums (`ifc_predefined_type`, `ifc_partitioning_type`, `ifc_panel_operation`) — the **output contract**. | Stable, `status=seed` — extensible, not exhaustive |
-| `window_file_survey.csv` | 208 window-style rows from 17 real downloaded IFC files (Revit 2011–2022, ArchiCAD, Rhino, IfcOpenShell-authored; IFC2x3 and IFC4). Each row: `style_code` classification (with confidence + basis + evidence), bakedness score/class, provenance. | Done; see Section 6 for headline findings |
-| `golden_targets/*.ifc` + `golden_targets.csv` | 12 authored, parametric IFC4 window files — one per concrete registry style. **These are the converter's output spec.** | Validated (see below) |
-| `bakedness.py` | The Parametric Integrity Score (PIS, 0–100) scorer. Classes: `PARAMETRIC` (≥78) / `SEMI_PARAMETRIC` (50–77) / `BAKED_WITH_METADATA` (20–49) / `FULLY_BAKED` (<20) / `STUB_NO_GEOMETRY`. | Stable |
-| `classify.py` | Style classifier: tries panel-operation enums first (high confidence), falls back to family-name regex (medium), else low/`UNCLASSIFIED`. Handles English + German terms. | Working but acknowledged-weak — see Section 6 |
-| `author_goldens.py` | IfcOpenShell engine that builds the golden targets (parametric swept geometry + lining/panel properties + Psets). | Stable; spec for `SPECS` list is in-file |
+| `Form X 6.22 IFC Survey/style_registry.csv` | Canonical style taxonomy: 13 rows (12 concrete + 1 abstract). `style_code` is the FK every other artifact keys off. Columns include target IFC enums (`ifc_predefined_type`, `ifc_partitioning_type`, `ifc_panel_operation`). | Stable, `status=seed` — extensible, not exhaustive |
+| `Form X 6.22 IFC Survey/window_file_survey.csv` | Survey rows from real downloaded IFC files. Each row: `style_code` classification (confidence + basis + evidence), bakedness score/class, provenance. | Done; see Section 6 |
+| `FormX 6.22 IFC Generated/*.ifc` (12 `WIN-*.ifc`) + `golden_targets.csv` | 12 authored, parametric IFC4 window files — one per concrete registry style. **Phase-2 / deferred output spec, NOT used by v1** (see Section 7). | Validated (see below) |
+| `Form X 6.22 IFC Survey/bakedness.py` | Parametric Integrity Score (PIS, 0–100) scorer. Classes: `PARAMETRIC` (≥78) / `SEMI_PARAMETRIC` (50–77) / `BAKED_WITH_METADATA` (20–49) / `FULLY_BAKED` (<20) / `STUB_NO_GEOMETRY`. `score_window(win, wtype)`. | Stable; **reused by converter** as the report/gate |
+| `Form X 6.22 IFC Survey/classify.py` | Style classifier: panel-operation enums first (high conf), family-name regex fallback (medium), else low/`UNCLASSIFIED`. English + German. `classify(win, wt)`. | **Reused by converter for Name + skylight only** (its weakness is cosmetic there) — see Section 6 |
+| `FormX 6.22 IFC Generated/author_goldens.py` | IfcOpenShell engine that builds the golden targets. `SPECS` (13 entries incl. abstract `WIN-HUNG-DBL_H`, which has NO `.ifc`), `build(spec, path)`. | Stable; **not imported by v1** (v1 authors its own arbitrary-axis geometry) |
+| **`IFC Window Converter/IFC_window_converter_V1.py`** | **The v1 converter.** Rebuilds each `IfcWindow` into a clean parametric hollow-frame + pane sized from its own measured geometry; preserves GlobalId/placement/relationships; sets canonical Name + `PredefinedType`. Batch `INPUT_IFC_FILES_HERE/` → `OUTPUT_IFC_FILES_HERE/` with `-WIN1` suffix; also single-file args. Run with `python3.11`. | **Built, all 3 ADUs pass `RESULT: ALL CHECKS PASSED`** |
+| **`IFC Window Converter/IFC window converter algorithm.md`** | Living spec for the converter (Gal's doc structure). | Current |
+
+**Reference inputs:** `FormX Designs IFC/*.ifc` are the real FormX ADUs (HUDSON, LEXFORD, Thomas) — the **primary reference for what input files look like**. `Gal_Similar_Project_Refrences/` (walls cleanup / levels organizer / floors definer) is the **design template** for the converter (CLI shape, built-in `verify()`, algorithm.md structure, "only-touch-your-element" discipline). User will drop real test inputs into `INPUT_IFC_FILES_HERE/`.
 
 **Golden target validation status (multi-source, not just self-checks):**
 - All 12 score `PIS=100 / PARAMETRIC` on `bakedness.py` (self-consistency — see caveat in Section 6).
@@ -98,6 +103,26 @@ Cross-checked against the real-world NAFS/AAMA fenestration standard (the North 
 
 These are empirical results from the survey, not assumptions — re-derive from `window_file_survey.csv` if in doubt.
 
+**— Findings from the v1 converter build (2026-06-22): —**
+
+- **Gal's functioning tools define the real FormX recipe, and it's leaner than the golden spec.** Grepping what each of Gal's three tools *authors* (not reads): walls cleanup (1512 lines, in production) creates **zero `Pset_*` and zero `IfcWallType`**; it rebuilds baked/Brep wall bodies into clean swept extrusions, renames by class, preserves openings. Levels organizer authors nothing but placements; floors definer only sets standard `PredefinedType` + cleans existing types. **None author bespoke property sets or operation-enum type apparatus.** The consistent recipe is: *clean regenerable geometry + canonical Name + standard `PredefinedType` + intact relationships, and nothing more.* v1 follows exactly this. The golden targets' richer apparatus (IfcWindowType + lining/panel/operation enums + Pset_WindowCommon) is **more than the working system is shown to need, and was authored by Claude, not FormX** — so it's deferred (Section 7), not built into v1.
+
+- **Real FormX ADU window geometry (the actual inputs, `FormX Designs IFC/`).** Schema varies per file (saw **IFC2X3, IFC4, IFC4X3** across the 3 ADUs); units are **feet** (`unit_scale 0.3048`), not mm. Each window's body is a **mapped representation**: `IfcWindow.Representation → IfcShapeRepresentation(MappedRepresentation) → IfcMappedItem → IfcRepresentationMap → real geometry`. The map is often **shared across multiple windows** (so never edit it in place). Underlying geometry is a mix of `IfcExtrudedAreaSolid` bundles (PIS 72–77), `IfcFacetedBrep`, and `IfcAdvancedBrep` (PIS 37–42). The mapping transform was identity on these files (geometry sits directly under `ObjectPlacement`).
+
+- **The local-frame wrinkle is solved empirically, not analytically.** A window's width/height/depth map onto whatever local axes its placement + exporter chose (some ADU windows are rotated 90°/180°; skylights lie flat with depth along Z). **Don't reverse-engineer the convention** — measure the window's local-frame bbox via the IfcOpenShell kernel (`use-world-coords=False`), take the **thinnest axis as depth**, and author a symmetric frame+pane filling that exact box. Measured extents matched `OverallWidth/OverallHeight` exactly. This makes the rebuild orientation-agnostic and keeps the window in its opening (verify world-bbox drift was 0 mm on swept windows, ≤7 mm on Brep bevels). **Kernel gotcha:** `ifcopenshell.geom` returns vertices in **metres regardless of file units** — divide by `calculate_unit_scale` to get file units.
+
+- **Removing a mapped representation safely.** When swapping a window's body, the old per-window `IfcShapeRepresentation` is often also referenced by an `IfcPresentationLayerAssignment`. Removing just the `IfcMappedItem` leaves the shaperep with empty `Items` → a schema error. Fix: **de-reference the shaperep from any layer assignment first**, then remove items + shaperep + product-def-shape; **never remove the shared `IfcRepresentationMap`**. (This bit during the build — see `_cleanup_old_rep`.)
+
+- **`classify.py`'s weakness is neutralized in v1.** Because v1 uses `style_code` only for the Name label + skylight detection (not geometry), a wrong style guess is cosmetic. One real miss in the test data: "Skylight-Top-Hung" classified as `WIN-HUNG-DBL_H` (matched "hung"), so the converter adds a **direct `"skylight"` name override** to force `PredefinedType=SKYLIGHT` (which IS semantic). Classifier returns `confidence=medium` from family names on all ADU windows.
+
+- **`validate` gate must compare to source, not require zero.** Real source files carry pre-existing `ifcopenshell.validate` errors (HUDSON: 2 "Attribute not optional"). The converter's gate is *output errors ≤ source errors* (introduce none), not *== 0*.
+
+- **Non-rectangular windows must NOT be rebuilt — the rectangular template flattens them (v1.1 fix).** The neutral frame+pane is authored from the window's *bounding box*, so a trapezoid/triangle/gable/arch would become a rectangle (caught in Blender: LEXFORD's `…Direct_Glaze_Trapezoid…` window, fill ratio 0.60, was flattened). Fix: a **face-fill gate** — convex-hull area of the face silhouette ÷ bounding-rect area; below `FILL_MIN` (0.95) the window is non-rectangular, so **leave its original geometry untouched and flag `[keep]`** (correct-but-original > clean-but-wrong). All FormX ADU rectangles score 1.00; only the trapezoid trips it. Faithful clean rebuild of odd shapes (extrude the real silhouette) is Phase-2. *Reminder for the future parametric layer: object-level Blender scaling is NOT parametric — it rigidly stretches the mesh and doesn't touch OverallWidth.*
+
+- **Rebuilding a window's representation drops its `IfcStyledItem` styles → windows render solid gray (v1.1 fix).** Glass transparency + frame colour live on `IfcStyledItem → IfcSurfaceStyle` attached to each *representation item*, not on the window element. Fresh items have none, so Blender/Bonsai (and other viewers) default to gray — caught in Blender testing. Fix: **harvest the original window's styles (bucket by `IfcSurfaceStyleRendering.Transparency`: most-transparent = glass, opaque = frame) and re-attach to the new pane/frame**, reusing the existing `IfcSurfaceStyle` entities verbatim (identical look; schema-correct since IFC2X3 wraps in `IfcPresentationStyleAssignment` while IFC4/4X3 is direct). Real FormX windows carried "Glass" (transp 0.75) + "Aluminum" (opaque). `verify()` now asserts every rebuilt window's items are styled.
+
+**— Survey findings (research phase): —**
+
 - **Operational style is almost never machine-declared.** Of 208 surveyed windows, only 25 (12%) were classifiable at all; 183 (88%) came back `UNCLASSIFIED`. Only the ArchiCAD file reliably populated panel-operation enums. Revit encodes style in the **family/type Name string** ("M_Fixed", "M_Casement", or German "DK-Fix" = tilt-turn, "3 tlg" = 3-panel), not in structured IFC fields. **Converter implication: do not trust `PartitioningType`/panel operation enums alone to know what kind of window something is. Name-string parsing (multilingual) is load-bearing, not a fallback.**
 
 - **"Revit bakes everything" is too crude — it's schema-version-dependent.** 2011-era Revit IFC2x3 exports (Duplex, Office_A) kept genuine swept-solid geometry (`IfcExtrudedAreaSolid`) plus `IfcWindowStyle`/lining properties — scored `SEMI_PARAMETRIC`. But modern Revit 2019–2022 **IFC4** exports (`FM_ARC_DigitalHub`, `ISSUE_159`) use explicit tessellated/brep geometry (`IfcAdvancedBrep`) — scored `BAKED_WITH_METADATA`. **If FormX ingests current Revit output, expect the baked case, not the lucky 2011 case.**
@@ -120,42 +145,43 @@ These are empirical results from the survey, not assumptions — re-derive from 
 
 ---
 
-## 7. Proposed converter pipeline (DRAFT — not yet implemented, not yet agreed)
+## 7. Converter pipeline — v1 AS BUILT + Phase-2 parking lot
 
-This is a starting sketch for the first implementation pass, not a locked spec. Update this section as soon as real design decisions are made or this diverges from what's actually built.
+**v1 is built and passing** (`IFC Window Converter/IFC_window_converter_V1.py`; full detail in that folder's `algorithm.md`). It deliberately follows the **proven Gal recipe** (Section 6), NOT the golden-spec. Per `IfcWindow`:
 
 ```
-for each IfcWindow in input file:
-    1. Extract survivors:
-       - OverallWidth, OverallHeight (convert using file's actual IfcUnitAssignment)
-       - Name string of the IfcWindow and its IfcWindowType
-       - Any populated values in attached property sets (Pset_WindowCommon, etc.)
-       - Any populated PartitioningType / panel OperationType enums (rare but check first — high confidence when present)
-
-    2. Classify -> style_code (extend classify.py; enum check first, name-parse fallback,
-       multilingual; flag low-confidence results rather than silently guessing)
-
-    3. Look up the golden target for that style_code (golden_targets/<style_code>.ifc)
-
-    4. Re-author a new window:
-       - Start from the golden target's structure (IfcWindowType, lining/panel properties, swept geometry)
-       - Substitute real OverallWidth/OverallHeight
-       - Carry forward any real survived Pset values (don't discard real U-values etc. in favor of placeholders)
-       - Regenerate geometry parametrically at the real dimensions (don't reuse golden's placeholder dims)
-
-    5. Replace the baked window in the spatial/relational structure
-       (IfcRelFillsElement -> IfcOpeningElement -> IfcRelVoidsElement -> IfcWall chain
-        should be preserved; only the window's own representation + type changes)
-
-    6. Validate the output window the same way golden targets were validated:
-       bakedness.py score should be PARAMETRIC, classify.py round-trip should match
-       the assigned style_code, ifcopenshell.validate should be clean.
-
-    7. Flag (don't silently drop) any UNCLASSIFIED or low-confidence windows for
-       human review rather than guessing a style.
+0. Skip if Description == "FormX-WIN1 parametric window"  (idempotent re-runs)
+1. Measure local-frame bbox via ifcopenshell.geom (use-world-coords=False), ÷ unit_scale
+   → file units. Thinnest axis = through-wall depth. (Empirical; orientation-agnostic.)
+2. classify.classify(win, wt) → style_code, used ONLY for the canonical Name label +
+   PredefinedType. Direct "skylight" name override → PredefinedType=SKYLIGHT.
+3. Author 2 clean swept solids filling that exact box: IfcRectangleHollowProfileDef lining
+   frame (full depth) + IfcRectangleProfileDef glazed pane (inset, thin, centred), extruded
+   along the depth axis via an IfcExtrudedAreaSolid whose placement maps +Z onto that axis.
+4. Point win.Representation at the new IfcProductDefinitionShape (reuse existing 'Body'
+   context). Remove old per-window rep entities (de-reference layer assignments first);
+   NEVER remove the shared IfcRepresentationMap. Preserve GlobalId + ObjectPlacement; set
+   canonical Name + Description marker + PredefinedType. Opening/fill/void/containment
+   chain is never touched.
+5. verify(): non-window counts unchanged, window GlobalIds preserved, openings unmoved,
+   per-window world-bbox drift ≤ 20 mm, no NEW ifcopenshell.validate errors vs source.
 ```
 
-Unresolved before this can be finalized: how to handle windows where *no* dimensions survived; whether to preserve the original `GlobalId` or mint new ones; batch vs. one-file-at-a-time CLI design; what "FormX-standard" output should be named/organized as on disk.
+**Phase-2 parking lot (DEFERRED — do not forget, do not build until triggered):**
+the golden-spec enrichment — `IfcWindowType` + `IfcWindowLiningProperties` +
+`IfcWindowPanelProperties` (operation enums) + `Pset_WindowCommon` (carrying forward real
+surviving U-values/IsExternal) + per-style **panel topology** (V/H mullions, multi-pane) +
+the full 12-style golden vocabulary in `FormX 6.22 IFC Generated/`. **Promotion trigger:**
+(a) FormX/CTO confirms the chat-manipulation actually consumes operation-type/panel
+semantics, OR (b) a viewer/FormX "look right" test shows panel subdivisions (mullions)
+matter visually. Until then this is unverified complexity beyond the proven recipe.
+`WIN-HUNG-DBL_H` is abstract (a `SPECS` entry with no golden `.ifc`) — handle then.
+- **Faithful rebuild of non-rectangular windows** (trapezoid/triangle/gable/arch): extrude the
+  real face silhouette as an `IfcArbitraryClosedProfileDef` + inset pane, instead of the
+  rectangular template. Until then they are preserved un-rebuilt (Section 6 fill-gate).
+
+Still genuinely open: windows where the kernel can't read geometry are flagged `[SKIP]` and
+left untouched (no dims to measure) — acceptable for v1, revisit if real inputs hit it.
 
 ---
 
@@ -169,6 +195,15 @@ Unresolved before this can be finalized: how to handle windows where *no* dimens
 | `WIN-HUNG-DBL_H` demoted to abstract, excluded from concrete golden-target set | Can't be built without committing to single/double-hung; only useful as classifier fallback | Active |
 | Plain `IfcWindow`/`'Body'` representation kept over `IfcWindowStandardCase`/`'Profile'` | Non-critical per spec (data is on the type regardless); more representative of real-world exporter output | Active, revisit only if formal IFC4 Reference View certification becomes a requirement |
 | Promote-from-surviving-data strategy chosen over geometric reconstruction | Empirically justified by the worked example in Section 6 — dimensions/style hints usually survive even when geometry is baked | Active |
+| **v1 follows the proven Gal recipe (clean geometry + Name + PredefinedType + relations), NOT the golden-spec** | Gal's functioning tools author no Psets/types; the golden apparatus is more than the working system needs and was Claude-authored, not FormX-confirmed (Section 6). Lower risk, more likely to drop into FormX. | **Active (v1)** |
+| **Golden-spec richness (IfcWindowType + lining/panel/operation enums + Pset + per-style topology) deferred to Phase 2, not deleted** | Value is conditional on FormX consuming operation semantics — unverified. Parked in Section 7 with an explicit promotion trigger. | **Active — revisit on trigger** |
+| **v1 rebuilds geometry from the window's OWN measured local bbox, one neutral frame+pane template** | Orientation-agnostic, keeps the window in its opening, makes it manipulatable. Per-style panel fidelity is the deferred layer. | **Active (v1)** |
+| **Non-rectangular windows (fill-ratio < 0.95) are preserved un-rebuilt, not flattened** | The rectangular template would turn a trapezoid/triangle/arch into a rectangle; preserving original geometry is correct-but-baked. Faithful clean rebuild is Phase-2. | **Active (v1.1)** |
+| **Surface styles (glass/frame) carried forward onto rebuilt geometry** | New items have no styling → viewers render gray; harvest + re-attach original `IfcSurfaceStyle`s. | **Active (v1.1)** |
+| **Preserve original `GlobalId`; rebuild in place; only the window's representation/Name/PredefinedType change** | Keeps the opening/fill/void/containment chain valid; "change as little as possible." (Resolved the Section-7-draft open question.) | **Active (v1)** |
+| **I/O: batch `INPUT_IFC_FILES_HERE/` → `OUTPUT_IFC_FILES_HERE/`, `-WIN1` suffix; single-file args too** | Honors the repo's existing folders + Gal's CLI shape. (`-W1` is taken by walls cleanup.) | **Active (v1)** |
+| **Target schema is whatever the input is (IFC2X3/IFC4/IFC4X3), not forced to IFC4** | Converter edits in place; real ADUs vary by schema. Supersedes the "Target IFC4" row above *for the converter's I/O* (golden authoring still emits IFC4). | **Active (v1)** |
+| **Done = "open + look right" in FormX/viewer (user's manual test); script self-validates structurally** | No FormX-side acceptance spec exists yet; structural `verify()` is the internal gate, user's viewer check is ground truth. | Active |
 
 ---
 
