@@ -46,12 +46,11 @@ import ifcopenshell.util.unit as ifc_unit
 import ifcopenshell.util.element as ifc_element
 import ifcopenshell.util.placement as ifc_placement
 
-# ── reuse the working FormX research modules (folders contain spaces; import by path) ──
+# ── self-contained: this converter depends ONLY on ifcopenshell (no project-internal imports).
+# The style label + skylight detection are done inline (see _style_token) — they're cosmetic,
+# so a lightweight keyword scan replaces the old classify.py / bakedness.py dependencies.
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent
-sys.path.insert(0, str(_ROOT / "Form X 6.22 IFC Survey"))
-import bakedness   # noqa: E402  score_window(win, wtype) -> dict(pis, bakedness, ...)
-import classify    # noqa: E402  classify(win, wt) -> dict(style_code, confidence, ...)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config
@@ -279,13 +278,46 @@ def _trailing_id(name):
     return None
 
 
-def _canonical_name(style_code, win):
-    op = (style_code or "").split("-")[1] if style_code and "-" in style_code else ""
-    word = _OP_WORD.get(op, "Window")
+# Coarse window-style tokens, matched against the Revit family/type name. First match wins.
+# This is COSMETIC — it only flavors the canonical Name and flags skylights; it never affects
+# geometry — so a keyword scan is enough (replaces the old classify.py).
+_STYLE_KEYWORDS = [
+    ("skylight", "SKYLIGHT"), ("casement", "CASEMENT"), ("awning", "AWNING"),
+    ("hopper", "HOPPER"), ("double-hung", "DOUBLEHUNG"), ("single-hung", "SINGLEHUNG"),
+    ("hung", "HUNG"), ("slider", "SLIDER"), ("sliding", "SLIDER"),
+    ("tilt", "TILTTURN"), ("pivot", "PIVOTH"), ("fixed", "FIXED"),
+]
+
+
+def _style_token(win, wt):
+    """Best-effort style token from the window/type family name (cosmetic; '' = unknown)."""
+    nm = " ".join(s for s in (win.Name, getattr(wt, "Name", None)) if s).lower()
+    for kw, token in _STYLE_KEYWORDS:
+        if kw in nm:
+            return token
+    return ""
+
+
+def _orig_geom_kind(win):
+    """A short label for the window's ORIGINAL representation, for the log (replaces the PIS)."""
+    rep = win.Representation
+    reps = rep.Representations if rep else None
+    if not reps or not reps[0].Items:
+        return "no-geom"
+    it = reps[0].Items[0]
+    if it.is_a("IfcMappedItem"):
+        inner = it.MappingSource.MappedRepresentation
+        kind = inner.Items[0].is_a() if inner.Items else "?"
+        return f"mapped/{inner.RepresentationType}({kind})"
+    return reps[0].RepresentationType or "?"
+
+
+def _canonical_name(token, win):
+    word = _OP_WORD.get(token, "Window")
     eid = _trailing_id(win.Name)
-    if op == "SKYLIGHT":
+    if token == "SKYLIGHT":
         base = "Skylight"
-    elif word == "Window":            # unclassified — avoid the doubled "Window window"
+    elif word == "Window":            # unknown style — avoid the doubled "Window window"
         base = "Window"
     else:
         base = f"{word} window"
@@ -381,15 +413,10 @@ def convert(src_path, out_path):
         if _already_converted(w):
             stats["already"] += 1
             continue
-        cl = classify.classify(w, wt)
-        style = cl.get("style_code") or "WIN-UNCLASSIFIED"
-        conf = cl.get("confidence")
-        predef = "SKYLIGHT" if "SKYLIGHT" in style else "WINDOW"
-        # Direct skylight override: classify can match "Hung" in "Skylight-Top-Hung" first,
-        # but PredefinedType=SKYLIGHT vs WINDOW is semantic, not cosmetic — so trust the name.
-        nm = " ".join(s for s in (w.Name, getattr(wt, "Name", None)) if s).lower()
-        if "skylight" in nm:
-            predef, style = "SKYLIGHT", "WIN-SKYLIGHT-SINGLE"
+        token = _style_token(w, wt)                        # cosmetic style label ('' = unknown)
+        # PredefinedType: SKYLIGHT vs WINDOW is the one semantic distinction (a roof window),
+        # so the "skylight" keyword wins regardless of any other word in the name.
+        predef = "SKYLIGHT" if token == "SKYLIGHT" else "WINDOW"
         try:
             # Non-rectangular windows (trapezoid / triangle / arch) would be flattened to a
             # rectangle by the neutral template — so preserve their original geometry instead.
@@ -399,13 +426,12 @@ def convert(src_path, out_path):
                 print(f"  [keep]    {w.Name!r:42}  non-rectangular (fill {fill:.2f}) → "
                       f"original geometry preserved (rebuild would flatten it)")
                 continue
-            bk = bakedness.score_window(w, wt)
-            reauthor_window(model, w, scale, style, predef)
+            kind = _orig_geom_kind(w)
+            reauthor_window(model, w, scale, token, predef)
             stats["rebuilt"] += 1
-            if style in ("WIN-UNCLASSIFIED",) or conf == "low":
+            if token == "":
                 stats["fallback-named"] += 1
-            print(f"  [rebuilt] {w.Name!r:42}  (was {style}, conf={conf}, "
-                  f"PIS {bk.get('pis')}/{bk.get('bakedness')})")
+            print(f"  [rebuilt] {w.Name!r:42}  (was {kind}, style={token or 'unknown'})")
         except Exception as e:
             stats["skipped"] += 1
             print(f"  [SKIP]    {w.Name!r:42}  geometry unreadable → left untouched: {e!r}")
@@ -503,14 +529,7 @@ def verify(src_path, out_path):
     print(f"  rebuilt windows missing surface styles: {unstyled}  "
           f"[{'OK — all styled' if unstyled == 0 else 'WOULD RENDER GRAY!'}]")
 
-    # 5. Internal quality gate (manual FormX/viewer test is ground truth).
-    pis_now = []
-    for w in after.by_type("IfcWindow"):
-        if (w.Description or "") == MARK:
-            pis_now.append(bakedness.score_window(w, ifc_element.get_type(w)).get("pis", 0))
-    if pis_now:
-        print(f"  rebuilt windows PIS: min {min(pis_now)} / mean {sum(pis_now)//len(pis_now)} "
-              f"(was SEMI/BAKED)")
+    # 5. Schema validity gate (manual FormX/viewer test is ground truth).
     try:
         import ifcopenshell.validate as V
         lb = V.json_logger(); V.validate(before, lb)

@@ -39,8 +39,8 @@ python3 IFC_window_converter_V1.py <in.ifc> <out.ifc>
 - **Input:** a Revit-exported `.ifc` (schema-tolerant — tested on IFC2X3, IFC4, IFC4X3).
 - **Output:** a copy with `-WIN1` before the extension, written to `OUTPUT_IFC_FILES_HERE/`.
 - **The original is never modified.** All edits happen on the copy.
-- Dependency: `ifcopenshell` (tested on 0.8.5). Reuses `classify.py` + `bakedness.py` from
-  `../Form X 6.22 IFC Survey/` (imported by path).
+- Dependency: **`ifcopenshell` only** (tested on 0.8.5) — self-contained, no project-internal
+  imports. (Style labelling + skylight detection are an inline keyword scan; see Step 2.)
 
 ## 3. Core principle — only the windows change
 
@@ -81,14 +81,14 @@ vertices, and it sidesteps every exporter's local-axis convention: the box's **t
 axis is the through-wall depth**; the other two span the face. (Verified: the measured
 extents match `OverallWidth`/`OverallHeight` exactly on the FormX ADUs.)
 
-### Step 2 — Light classify (Name + PredefinedType only)
-`classify.classify(win, wt)` → a `style_code`, used **only** to (a) choose a canonical Name
-label (`Fixed window: <id>`, `Casement window: <id>`, …, keeping the trailing Revit element
-id like Gal does) and (b) pick `PredefinedType`. The classifier's known weakness (≈88 % of
-real windows are name-only) is therefore **cosmetic, not structural** — a wrong style label
-never corrupts geometry. One semantic override: if `"skylight"` appears in the window/type
-Name, force `PredefinedType = SKYLIGHT` (the classifier can otherwise match "Hung" inside
-"Skylight-Top-Hung").
+### Step 2 — Inline style label (Name + PredefinedType only)
+A lightweight keyword scan over the window/type family Name (`_style_token`) → a coarse style
+token, used **only** to (a) choose a canonical Name label (`Fixed window: <id>`, `Casement
+window: <id>`, …, keeping the trailing Revit element id like Gal does) and (b) pick
+`PredefinedType`. This is **cosmetic, not structural** — a wrong label never corrupts geometry
+(real exports rarely populate structured operation enums anyway; style lives in the Name). The
+one semantic distinction is the `"skylight"` keyword → `PredefinedType = SKYLIGHT` (a roof
+window). No external classifier dependency.
 
 ### Step 3 — Author a clean parametric body
 Build two swept solids filling the measured box, centred on it:
@@ -139,10 +139,10 @@ After writing the `-WIN1` copy, `verify()` reopens source and output and asserts
 
 Prints a per-file summary and `RESULT: ALL CHECKS PASSED ✓ / SEE WARNINGS ABOVE ✗`.
 
-> **Note on PIS.** Rebuilt windows score ~72–77 on `bakedness.py` (geometry is now clean
-> parametric-swept; the remaining points come from the deferred `IfcWindowType` /
-> lining-panel / Pset layer, §7). The geometry — the part that makes a window manipulatable —
-> is the win here; PIS is reported, not gated.
+> **Note.** The log reports each window's ORIGINAL representation kind (e.g.
+> `mapped/AdvancedBrep`, `mapped/SweptSolid`) so you can see what was rebuilt. The
+> manipulability of the *output* is what matters, and it's proven by the automated tester
+> (`test_window_converter.py`), not by a score.
 
 ## 6. Test fixtures & expected results
 
@@ -165,9 +165,9 @@ semantics, or a viewer test shows it's needed (see CLAUDE.md §7/§8):
 - `IfcWindowType` + `IfcWindowLiningProperties` + `IfcWindowPanelProperties` (operation enums).
 - `Pset_WindowCommon` authoring, carrying forward real surviving values (U-value, IsExternal).
 - Per-style **panel topology** (V/H mullions, multi-pane splits) and the full 12-style golden
-  vocabulary in `../FormX 6.22 IFC Generated/`. The classifier's `style_code` is already
-  computed each run — promoting this layer means feeding it into geometry instead of just the
-  Name. `WIN-HUNG-DBL_H` is abstract (a `SPECS` entry with no golden `.ifc`) — handle then.
+  vocabulary, archived in `../Old Context/FormX 6.22 IFC Generated/`. Promoting this layer means
+  feeding a style token into geometry instead of just the Name. `WIN-HUNG-DBL_H` is abstract (a
+  `SPECS` entry with no golden `.ifc`) — handle then.
 
 ## 8. Known limitations
 
