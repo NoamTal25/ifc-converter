@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Generated converter outputs (regenerable from the converter; keep INPUT/OUTPUT folders empty in VCS)
+OUTPUT_IFC_FILES_HERE/*.ifc
+INPUT_IFC_FILES_HERE/*.ifc
