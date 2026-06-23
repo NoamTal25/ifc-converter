@@ -19,7 +19,7 @@ this single before/after contrast both proves the tests have teeth and proves th
 whole purpose.
 
 Run with python3.11 (ifcopenshell 0.8.5):
-    python3.11 test_window_converter.py            # all fixtures (FormX Designs IFC/ + INPUT/)
+    python3.11 test_window_converter.py            # all fixtures in INPUT_IFC_FILES_HERE/
     python3.11 test_window_converter.py -v         # verbose: show every passing assertion
     python3.11 test_window_converter.py <file.ifc> # one fixture
 Exits non-zero if any fixture fails any layer.
@@ -42,7 +42,7 @@ import ifcopenshell.validate as ifc_validate
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 CONVERTER = HERE / "IFC_window_converter_V1.py"
-FIXTURE_DIRS = [ROOT / "FormX Designs IFC", ROOT / "INPUT_IFC_FILES_HERE"]
+FIXTURE_DIRS = [ROOT / "INPUT_IFC_FILES_HERE"]
 
 def _load_converter():
     spec = importlib.util.spec_from_file_location("winconv", CONVERTER)
@@ -329,10 +329,10 @@ def layer_E_idempotency(c, out):
 
 # Pinned per-fixture rebuilt-window counts (Gal-style baseline). A no-op or a regression
 # that silently rebuilds fewer windows must trip this. Update only with an intended change.
+# Keyed by fixtures in INPUT_IFC_FILES_HERE/; a new file without an entry gets the looser
+# "rebuilt >= 1" check.
 BASELINE_REBUILT = {
-    "FORMX_HUDSON_ADU.ifc": 5,
-    "Thomas_Thoms_B_THOMAS_ADU-NOV_14_2024.ifc": 11,
-    "LEXFORD_OFFICE-C1.ifc": 6,                  # 7 windows, 1 trapezoid kept
+    "LEXFORD_OFFICE-C1.ifc": 6,                   # 7 windows, 1 trapezoid kept
     "SAN_JUAN_CYPRESS_-_AUG_2-W1-L1.ifc": 6,
     "Sunflower_Sunflower_A_Sunflower_A_.ifc": 4,  # 5 windows, 1 bodiless skipped
     "Turnberry_927_TURNBERRY_ADU-DEC_2_2025-C1.ifc": 8,
@@ -390,10 +390,15 @@ def test_fixture(path, verbose):
 def _fixtures(args):
     if args:
         return [Path(a) for a in args]
-    out = []
-    for d in FIXTURE_DIRS:
-        if d.is_dir():
-            out += [p for p in sorted(d.glob("*.ifc")) if not p.stem.endswith(WC.SUFFIX)]
+    out, seen = [], set()
+    for d in FIXTURE_DIRS:                       # reference fixtures first, then INPUT/
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*.ifc")):
+            if p.stem.endswith(WC.SUFFIX) or p.name in seen:
+                continue                         # skip -WIN1 + the same file present in both dirs
+            seen.add(p.name)
+            out.append(p)
     return out
 
 

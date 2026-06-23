@@ -59,10 +59,10 @@ python3.11 "IFC Window Converter/test_window_converter.py" -v         # show eve
 python3.11 "IFC Window Converter/test_window_converter.py" <file.ifc> # one fixture
 ```
 
-Fixtures are every `*.ifc` (not `-WIN1`) in `FormX Designs IFC/` + `INPUT_IFC_FILES_HERE/`.
-For each, the harness snapshots the source SHA-256+mtime, runs `convert(src, tmp)` into a
-**throwaway temp** (never pollutes `OUTPUT_IFC_FILES_HERE/`), then runs the battery on the
-original + output. Exits non-zero if any fixture fails any layer.
+Fixtures are every `*.ifc` (not `-WIN1`) in `INPUT_IFC_FILES_HERE/`. For each, the harness
+snapshots the source SHA-256+mtime, runs `convert(src, tmp)` into a **throwaway temp** (never
+pollutes `OUTPUT_IFC_FILES_HERE/`), then runs the battery on the original + output. Exits
+non-zero if any fixture fails any layer.
 
 ## 4. The invariant battery (layers)
 
@@ -87,10 +87,8 @@ original + output. Exits non-zero if any fixture fails any layer.
 
 ## 5. Baseline (pinned in `BASELINE_REBUILT` in the harness)
 
-| Fixture | Schema | Windows | Rebuilt | Notes |
+| Fixture (in `INPUT_IFC_FILES_HERE/`) | Schema | Windows | Rebuilt | Notes |
 |---|---|---|---|---|
-| FORMX_HUDSON_ADU | IFC4X3 | 5 | 5 | shared map; swept + brep |
-| Thomas_…_ADU | IFC4 | 11 | 11 | advanced-brep + 2 skylights (depth Z) |
 | LEXFORD_OFFICE-C1 | IFC2X3 | 7 | 6 | 1 trapezoid `[keep]` (non-rectangular) |
 | SAN_JUAN_…-W1-L1 | IFC4X3 | 6 | 6 | already through walls+levels pipeline |
 | Sunflower_A | IFC2X3 | 5 | 4 | 1 bodiless `FootPrint` window `[SKIP]` |
