@@ -5,9 +5,10 @@
 > "CONVERTER RECIPE" / §3 "Building the next converter" in `../CLAUDE.md`. Kept in sync as the
 > algorithm evolves. Last updated: **2026-06-24**.
 >
-> **Implementation:** `IFC_door_converter_V1.py` — **v2 shipped: modular, classification-driven,
-> faithful parametric rebuild** (lining + framed leaves + dividers + canonical handle, composed by
-> `_assemble` from a per-class recipe). Built + tester 4/4, teeth-verified, on all 11 ADU doors.
+> **Implementation:** `IFC_door_converter_V1.py` — **v2.1 shipped: modular, classification-driven,
+> faithful parametric rebuild** (single frame layer = lining + panes + dividers + canonical handle,
+> composed by `_assemble` from a per-class recipe; glazed doors measure their member layout 1-1).
+> Built + tester 4/4, teeth-verified, on all 11 ADU doors.
 
 ---
 
@@ -383,31 +384,36 @@ Idempotency: re-running on a `-D1` output reports `rebuilt=0, already=N`.
 - **Teeth:** the same manipulability test on the baked originals MUST fail (negative control),
   plus a pinned `BASELINE_REBUILT` door count — verified by pointing the harness at a no-op
   (plain copy), which trips `[F] rebuilt count matches baseline`.
-- **Status:** the tester passes **4/4 fixtures (all 11 doors)** against the v2 modular converter,
-  teeth re-verified. It tolerates the multiple hollows (outer lining = the largest-area hollow, the
-  rest are fills) + handle solids; the contract stays "outer hollow frame + ≥1 inset pane, all
-  styled," and drift is measured on the **face plane** (§6). Still **one test for all doors** — it
-  asserts the class-agnostic contract, never per-class shapes.
+- **Status:** the tester passes **4/4 fixtures (all 11 doors)** against the v2.1 converter, teeth
+  re-verified. With the single frame layer the Body has one hollow (the lining); panes/dividers/
+  handles are rect fills. The contract stays "outer hollow lining + ≥1 inset pane, all parts
+  contained + styled" (the test takes the largest-area hollow as the lining, robustly), and drift is
+  measured on the **face plane** (§6). Still **one test for all doors** — class-agnostic contract,
+  never per-class shapes.
 
 ## 9. Build status, known limitations & deferred
 
-**Built (v2, modular):** class-driven assembly — lining + N framed leaves (per-leaf stile/rail
-sub-frame + pane) + dividers + a canonical **handle** (lever / flush-pull / none, both faces) +
-**folding-depth clamp**, all composed by `_assemble` from the recipe. French & multi-panel doors
-keep their mullion, per-leaf framing, and handles. **Deferred / out of scope:** the rest below.
+**Built (v2.1, modular, measured-layout):** class-driven assembly composed by `_assemble` from the
+recipe — a **single frame layer** (outer lining + panes + dividers, no nested sub-frames) + a
+canonical **handle** (lever / flush-pull / none, both faces) + **folding-depth clamp**. For glazed
+doors the **member layout is measured 1-1** (border + pane widths + mullion from the transparent
+sub-solids, `_measure_layout`); opaque doors fall back to even-tiling at the default border. French
+& multi-panel doors keep their mullion, framed-leaf read, and handles. **Deferred / out of scope:**
+the rest below.
 
 - **Faithful, not pixel-identical — by design.** Part shapes are clean canonical rectangles +
   a standard handle, sized/colored/placed from the original; a moulded stile → a clean rectangle
-  of equal extent, an ornate knob → the standard lever. Overall dimensions and colors match
-  exactly (§1); fine profile/handle shape does not. (Dual-rep "literal-exact" fallback is gated on
-  the FormX-regenerates question — §1.)
-- **Lining thickness measured for glazed doors, default for opaque.** Glazed doors get the real
-  border width from the glass gap (Step 1); opaque doors (no glass to measure) keep the 50 mm
-  default — measuring their member width would need fragile per-part mesh analysis.
-- **In-pane glazing bars / muntins not modelled.** Each leaf is a sub-frame + a single pane; a
-  divided-lite grid within a pane is a further fidelity upgrade.
-- **Overall size is the drivable parameter; leaves don't auto-reflow.** Driving the outer frame
-  resizes the door; the leaves/handles don't yet redistribute proportionally (a generator-level layer).
+  of equal extent, an ornate knob → the standard lever. Overall dimensions, colors, and (for glazed
+  doors) the member layout match; fine profile/handle shape does not. (Dual-rep "literal-exact"
+  fallback is gated on the FormX-regenerates question — §1.)
+- **Glazed doors measured 1-1; opaque even-tiled.** Glazed doors get the real border + pane layout
+  from the glass sub-solids (Step 1); opaque doors have no glass to decompose, so they keep the
+  even-tiled default (measuring opaque member widths would need fragile per-part mesh analysis).
+- **One frame layer — panes are bounded by lining + dividers**, not their own stile/rail
+  sub-frame; in-pane glazing bars / muntins aren't modelled. Per-leaf sub-frames and divided-lite
+  grids are a further fidelity upgrade.
+- **Overall size is the drivable parameter; panes don't auto-reflow.** Driving the outer lining
+  resizes the door; panes/dividers don't yet redistribute proportionally (a generator-level layer).
 - **Handedness from the enum, not authored back.** Panel *count* and handle *side* come from
   `OperationType`; we don't write `OperationType`/`IfcDoorLiningProperties`/`IfcDoorPanelProperties`
   onto the output (the standard "golden-target" psets — promote if FormX consumes named params),

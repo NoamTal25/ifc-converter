@@ -277,7 +277,7 @@ def _default_styles(model):
 
 def _apply_styles(model, parts, transparent, opaque, glazed):
     """Attach surface styles to the assembled (solid, role) parts, role-keyed: `pane` → glazed-or-
-    opaque per the flag; everything structural (`frame`/`leafframe`/`divider`/`handle`) → opaque.
+    opaque per the flag; everything structural (`frame`/`divider`/`handle`) → opaque.
     Reuses harvested style entities verbatim; falls back to an authored glass+frame pair."""
     if transparent is None and opaque is None:
         transparent, opaque = _default_styles(model)

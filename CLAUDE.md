@@ -125,9 +125,9 @@ plan file (not yet in-repo).
 | `IFC Window Converter/IFC_window_converter_V1.py` | **The reference converter.** Rebuilds each `IfcWindow` into a clean parametric hollow-frame + pane from its own measured bbox; preserves GlobalId/placement/relationships + surface styles; canonical Name + `PredefinedType`; gates non-rectangular + unreadable windows. **Self-contained (ifcopenshell only).** Batch INPUT→OUTPUT `-WIN1`, also single-file args. | Built; all fixtures pass |
 | `IFC Window Converter/IFC window converter algorithm.md` | Living spec (Gal's doc structure). | Current |
 | `IFC Window Converter/test_window_converter.py` + `WINDOW_CONVERTER_TESTING_AGENT.md` | **Automated manipulability tester** + its subagent spec. Runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently (does NOT call the converter's `verify()`), and **actually manipulates each rebuilt window** (parametric resize/move/rotate) — asserting frame border stays constant, moves rigidly, stays valid. **Kernel-free** (analytic bbox from profile+placement — the geom kernel returns nondeterministic empty meshes on fresh solids). Teeth: same test on baked originals MUST fail + pinned `BASELINE_REBUILT`. Run `python3.11 test_window_converter.py`. | 4/4 fixtures pass; teeth verified |
-| `IFC Door Converter/IFC_door_converter_V1.py` | **The door converter (v2, modular).** `_classify`→`_rebuild_plan` makes a recipe `{panels, arrangement, framed, folding, hardware}`; `_assemble` composes a parts library (`_build_lining`/`_build_leaf`/`_build_handles`/`_door_depth`) into lining + N **framed leaves** (sub-frame + pane) + dividers + a canonical **handle**, per class (French→2 framed leaves+mullion+2 levers, four-fold→4, single-flush→slab+lever, sliding→flush-pull, overhead→stacked+no handle). Panel count from the real `OperationType` enum (Name fallback); folding-depth clamp. Faithful (overall dims measured-exact, colors/props preserved) not pixel-identical. **Swaps only the Body, leaves `FootPrint` untouched** (match by `.id()`); gates non-rectangular + unreadable. **Self-contained.** Batch INPUT→OUTPUT `-D1`. | Built; all 4 fixtures (11 doors) pass `verify()` |
+| `IFC Door Converter/IFC_door_converter_V1.py` | **The door converter (v2.1, modular).** `_classify`→`_rebuild_plan` makes a recipe `{panels, arrangement, folding, hardware}`; `_assemble` composes a parts library (inline lining/pane/divider builders + `_build_handles`/`_door_depth`) into a **single frame layer** — outer lining + panes + dividers — plus a canonical **handle**, per class (French→lining+2 panes+mullion+2 levers, four-fold→4 panes+3 mullions, single-flush→lining+slab+lever, sliding→flush-pull, overhead→stacked+no handle). **Glazed doors measure their member layout 1-1** (border + pane widths + mullion from the transparent sub-solids, `_measure_layout`); opaque fall back to even-tiling. Panel count from the real `OperationType` enum (Name fallback); folding-depth clamp. Faithful (overall dims + glazed layout + colors/props measured/preserved) not pixel-identical. **Swaps only the Body, leaves `FootPrint` untouched** (match by `.id()`); gates non-rectangular + unreadable. **Self-contained.** Batch INPUT→OUTPUT `-D1`. | Built; all 4 fixtures (11 doors) pass `verify()` |
 | `IFC Door Converter/IFC door converter algorithm.md` | Living spec (mirrors the window algorithm doc); Step 2 holds the comprehensive door taxonomy. | Current |
-| `IFC Door Converter/test_door_converter.py` + `DOOR_CONVERTER_TESTING_AGENT.md` | **Automated manipulability tester** + its subagent spec. Mirrors the window tester: runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently (does NOT call `verify()`), and **manipulates each rebuilt door** (resize/move/rotate) — outer lining = largest-area hollow (Body now has multiple hollows: lining + per-leaf sub-frames), ≥1 inset pane, every part contained + styled, tolerant of handle solids; drift on the **face plane** (proud handle/depth-clamp ignored); FootPrint preserved. **Kernel-free** (analytic bbox). Teeth: baked originals MUST fail + pinned `BASELINE_REBUILT`. Run `python3.11 test_door_converter.py`. | 4/4 fixtures pass; teeth verified |
+| `IFC Door Converter/test_door_converter.py` + `DOOR_CONVERTER_TESTING_AGENT.md` | **Automated manipulability tester** + its subagent spec. Mirrors the window tester: runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently (does NOT call `verify()`), and **manipulates each rebuilt door** (resize/move/rotate) — outer lining = the hollow profile (single frame layer; panes/dividers/handles are rect fills), ≥1 inset pane, every part contained + styled; drift on the **face plane** (proud handle/depth-clamp ignored); FootPrint preserved. **Kernel-free** (analytic bbox). Teeth: baked originals MUST fail + pinned `BASELINE_REBUILT`. Run `python3.11 test_door_converter.py`. | 4/4 fixtures pass; teeth verified |
 | `Gal_Similar_Project_Refrences/` | Gal's three production tools (walls cleanup / levels organizer / floors definer) + their algorithm.md & testing docs. The **design template** (CLI shape, built-in `verify()`, "only-touch-your-element" discipline, testing methodology). | Reference |
 | `INPUT_IFC_FILES_HERE/` | Real FormX ADUs — the converter's batch input **and** the tester's fixture corpus: `LEXFORD_OFFICE-C1` (IFC2X3), `SAN_JUAN_CYPRESS…-W1-L1` (IFC4X3, already through walls+levels), `Sunflower_A` (IFC2X3), `Turnberry…-C1` (IFC4). | Active |
 | `OUTPUT_IFC_FILES_HERE/` | Converter outputs (`-WIN1` etc.), gitignored. | — |
@@ -143,33 +143,36 @@ wall (`IfcRelFillsElement → IfcOpeningElement → IfcRelVoidsElement → IfcWa
 `IfcBuildingStorey` — the same chain as windows, with the same three Body geometry kinds
 (mapped FacetedBrep / ExtrudedAreaSolid / AdvancedBrep). So the window spine transferred directly.
 
-**The door converter is v2: MODULAR + classification-driven.** `_classify` → `_rebuild_plan`
-returns a recipe `{panels, arrangement, framed, folding, hardware}`; an **assembler** (`_assemble`)
-composes a small **parts library** (`_build_lining`, `_build_leaf`, `_build_handles`, `_door_depth`)
-per the recipe, each returning `(solid, role)` and styled role-keyed. Adding a door class = a new
-recipe over the existing modules, not a new monolith. Deltas vs the window converter:
-- **Class drives the build.** A flush single → lining + slab + lever; French/double → lining + 2
-  **framed leaves** (hollow stile/rail sub-frame + inset pane; their stiles meet as the mullion) +
-  2 levers; four-fold → lining + 4 framed leaves + flush-pull; overhead/sectional → lining +
-  stacked sections + rails + no handle. `side-by-side` divides width, `stacked` divides height.
-  **(Fixed two viewer regressions the user caught: French doors flattened to one pane → now panel
-  topology + per-leaf framing; and missing handles → now a canonical handle.)**
-- **Canonical handle, not preserved hardware.** A per-class detail audit showed originals carry
-  handles/hinges (8+ small sub-solids) + per-leaf stiles; we author a reusable handle (`lever` /
-  `flush_pull` / `none` by family, side from handedness), proud of BOTH faces, placement-anchored
-  so it moves with the door and never stretches. No baked hardware preserved (promote-not-preserve).
+**The door converter is v2.1: MODULAR + classification-driven, single frame layer.** `_classify` →
+`_rebuild_plan` returns a recipe `{panels, arrangement, folding, hardware}`; an **assembler**
+(`_assemble`) composes a small **parts library** (inline lining/pane/divider builders +
+`_build_handles`, `_door_depth`) per the recipe, each part a `(solid, role)` styled role-keyed.
+Adding a door class = a new recipe over the existing modules, not a new monolith. Deltas vs the
+window converter:
+- **Class drives the build — one frame layer:** outer lining + panes + dividers (NO nested
+  per-leaf sub-frames). A flush single → lining + 1 pane + lever; French/double → lining + 2 panes
+  + central mullion + 2 levers; four-fold → lining + 4 panes + 3 mullions + flush-pull;
+  overhead/sectional → lining + stacked sections + rails + no handle. `side-by-side` divides width,
+  `stacked` divides height. Each pane is bounded by lining + dividers, so it still reads as a framed
+  leaf. **(Fixed the viewer regressions the user caught: French doors flattened → now panel
+  topology; missing handles → canonical handle; skinny/then-doubled frame → measured single layer.)**
+- **Glazed doors measure their member layout 1-1** (`_measure_layout`): from the transparent (glass)
+  sub-solids, the real border = (door face − glazed opening)/2 → lining `WallThickness` *directly*
+  (single layer, NO halving — the old lining+stile doubling is gone), and pane widths + mullion gaps
+  come from the measured glazed extents (honours uneven splits). LEXFORD French → ~6.4″ border.
+  Opaque doors have no glass to decompose → even-tiled at the default border.
+- **Canonical handle, not preserved hardware.** A per-class detail audit (small-in-both-face-dims =
+  hardware) showed originals carry handles/hinges + per-leaf stiles; we author a reusable handle
+  (`lever` / `flush_pull` / `none` by family, side from handedness), proud of BOTH faces,
+  placement-anchored so it moves with the door and never stretches. No baked hardware preserved.
 - **Panel count from the real `OperationType` enum when present** (machine-declared on
   `IfcDoorStyle`/`IfcDoorType`, e.g. `DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_*`), else the Name. Still
   not *authored* back (handedness/`IfcDoorLiningProperties`/`IfcDoorPanelProperties` = deferred
   golden-spec, promote if FormX consumes named door params).
-- **Faithful, not pixel-identical (Path A).** Overall W/H/D measured-exact + colors harvested +
-  properties preserved; part shapes are clean canonical rectangles. **Folding-door depth clamp:**
-  folded leaves project (bbox depth ~1.55 ft on the four-fold) → `_door_depth` clamps so we don't
-  build a 1.5-ft-thick door. **Lining member thickness measured for glazed doors** (`_measure_frame_thk`:
-  border = (door face − glass gap)/2, from the transparent sub-solids). That total border is **split
-  `/2` between the two frame layers** (outer lining + leaf stile) so they SUM to it — applying it to
-  both un-halved doubles the border (the "way too wide" bug). LEXFORD French → ~6.4″ total (3.19″+3.19″);
-  opaque doors keep the 50 mm default (no glass to measure).
+- **Faithful, not pixel-identical (Path A).** Overall W/H/D + glazed member layout measured, colors
+  harvested, properties preserved; part shapes are clean canonical rectangles. **Folding-door depth
+  clamp:** folded leaves project (bbox depth ~1.55 ft on the four-fold) → `_door_depth` clamps so we
+  don't build a 1.5-ft-thick door.
 - **Axis roles empirical:** thinnest = depth; of the two face axes the more-vertical (max world |Z|)
   = height. **Classifier layers:** A (`PredefinedType`, 5 `IfcDoorTypeEnum`) × B (operation family,
   23 ops → 12 families) × C (glazed) are orthogonal facets; D (the recipe) is derived from them and
@@ -177,11 +180,11 @@ recipe over the existing modules, not a new monolith. Deltas vs the window conve
 - **Swaps only the `Body` shaperep in place**, preserving `FootPrint`. *(Gotcha: match by `.id()`,
   not `is` — see §6.)* Suffix `-D1`; marker `Description == "FormX-D1 parametric door"`.
 
-Result: all 11 doors rebuilt with class-correct topology + per-leaf framing + handles (0 kept, 0
-skipped), `verify()` ALL CHECKS PASSED on all 4 fixtures (drift measured on the **face plane** so a
+Result: all 11 doors rebuilt with class-correct topology + measured glazed layout + handles (0 kept,
+0 skipped), `verify()` ALL CHECKS PASSED on all 4 fixtures (drift measured on the **face plane** so a
 proud handle / depth-clamp doesn't trip it), no new validate errors, idempotent. The automated
-tester (`test_door_converter.py`, 4/4 fixtures, teeth-verified, tolerant of multi-hollow + handle
-solids) + testing-agent doc are shipped. **Open next:** new modules for untested classes (revolving
+tester (`test_door_converter.py`, 4/4 fixtures, teeth-verified, single hollow lining + measured
+panes/handle fills) + testing-agent doc are shipped. **Open next:** new modules for untested classes (revolving
 = radial, boom/turnstile = bar, trapdoor = horizontal, swing+fixed = unequal split); the deferred
 pset golden-spec; a unified pipeline orchestrator per §3.
 

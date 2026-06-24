@@ -36,18 +36,19 @@ converter. Two non-negotiable principles, inherited from Gal:
    `[F] rebuilt count matches baseline (0 == 2)` on LEXFORD.)*
 
 **No Blender.** A converted door is manipulable because its geometry is now clean parametric
-profiles — a hollow outer lining (`IfcRectangleHollowProfileDef.XDim` / `WallThickness`) plus, per
-leaf, a hollow stile/rail sub-frame + an inset pane, plus canonical handle solids
-(`IfcRectangleProfileDef`). That is tested in code — deterministically, and exactly how FormX will
-manipulate it — far more reliably than by eye in a viewer. Geometry is measured **analytically**
-from the IFC profile + placement (kernel-free), not via the tessellation kernel (which returns
-nondeterministic empty meshes on freshly-authored solids — and, observed while building this,
-sometimes on baked breps in a fresh process too).
+profiles — a single frame layer of a hollow outer lining (`IfcRectangleHollowProfileDef.XDim` /
+`WallThickness`) + inset panes + divider bars + canonical handle solids (`IfcRectangleProfileDef`).
+That is tested in code — deterministically, and exactly how FormX will manipulate it — far more
+reliably than by eye in a viewer. Geometry is measured **analytically** from the IFC profile +
+placement (kernel-free), not via the tessellation kernel (which returns nondeterministic empty
+meshes on freshly-authored solids — and, observed while building this, sometimes on baked breps in
+a fresh process too).
 
 The rebuild is **class-driven** (the converter's `_rebuild_plan` → `_assemble`): a flush single →
-lining + slab + lever; a French/double → lining + 2 framed leaves (their stiles meet as the
-mullion) + 2 levers; a four-fold → lining + 4 framed leaves + flush-pull; an overhead → lining +
-stacked sections + rails. So the tester must not assume a fixed solid count — it asserts "outer
+lining + 1 pane + lever; a French/double → lining + 2 panes + central mullion + 2 levers; a
+four-fold → lining + 4 panes + 3 mullions + flush-pull; an overhead → lining + stacked sections +
+rails. For glazed doors the pane widths + border are measured 1-1 from the glass sub-solids; opaque
+fall back to even tiling. So the tester must not assume a fixed solid count — it asserts "outer
 lining (largest hollow) + ≥1 inset pane, every part contained + styled" (true for every class).
 
 > **Subtype trap (don't get bitten):** `IfcRectangleHollowProfileDef` **is-a**
@@ -88,10 +89,10 @@ non-zero if any fixture fails any layer.
   have drifted out of its opening / off the floor); **every door that had a `FootPrint` (2D)
   representation still has one** (only the Body was swapped); source file SHA/mtime untouched.
 - **C — Manipulable state (static).** Each rebuilt door: one non-mapped Body whose **outer lining
-  frame** is the largest-area hollow profile (real `WallThickness`), plus ≥1 inset pane, with every
-  part (per-leaf sub-frames, panes, dividers, handle solids) contained within the lining face and
-  styled. (The Body now holds *multiple* hollow profiles — the outer lining + one per framed leaf —
-  so "the frame" = the largest; the rest are fills. Holds for 1-, 2- and 4-panel doors.)
+  frame** is the hollow profile (real `WallThickness`), plus ≥1 inset pane, with every part (panes,
+  dividers, handle solids) contained within the lining face and styled. (The single frame layer
+  means one hollow = the lining; panes/dividers/handles are rect fills — the test takes the
+  largest-area hollow as the lining to stay robust. Holds for 1-, 2- and 4-panel doors.)
 - **D — Manipulability (active — the door-specific layer).** On a fresh temp copy per door:
   *width resize* drives the **outer lining** `XDim×1.5` and asserts the border stays constant, the
   door grows ~1.5× on that axis only, and all parts stay inside; *height resize* (same on `YDim`);
