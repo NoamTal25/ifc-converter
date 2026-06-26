@@ -4,8 +4,9 @@ Turn Revit-exported building IFCs into **clean, parametric, manipulable** geomet
 chat-driven design tool can actually edit — *"make this window wider"* needs a live width parameter
 to grab, not a frozen mesh.
 
-This repo currently ships the **Window Converter (v2)** as its proven, go-forward component. It's
-one piece of a larger, composable pipeline (see [The broader picture](#the-broader-picture)).
+This repo ships the **Window Converter (v2)** and the **Door Converter (v2)** as its proven,
+go-forward components — both built on the same golden-template-swap method. They're pieces of a
+larger, composable pipeline (see [The broader picture](#the-broader-picture)).
 
 ---
 
@@ -175,6 +176,49 @@ remainder being correctly-gated trapezoid, skylight, and bodiless windows).
 
 ---
 
+## The Door Converter (v2)
+
+Same method, same architecture, applied to `IfcDoor`. It classifies each baked door from its name
+into one of FormX's **16 door types** (the *Template Gallery* DOORS taxonomy), rebuilds it as that
+type's clean parametric golden template — sized to the door's measured dimensions and **coloured from
+the door's own harvested surface styles** — and swaps only the `Body`, preserving identity, placement,
+the host-wall opening chain, and `FootPrint`. Output suffix `-D2`.
+
+```
+IFC Door Converter v2/
+├── door_types.py          ★ single source of truth — the 16 FormX door types (edit here)
+├── generate_goldens.py      → writes the 16 golden templates (for review)
+├── golden_templates/*.ifc   the reviewable canonical shapes + parameter contract
+├── golden_door_geometry.py ★ the SHARED, scale-correct parametric recipe
+├── classify_door.py         name → FormX-type recipe (PDF rules, tuned to real names)
+├── schema_adapter.py        per-IFC2X3 / IFC4 / IFC4X3 differences
+├── IFC_door_converter_V2.py main converter + built-in verify()
+└── test_door_converter_v2.py + DOOR_CONVERTER_V2_TESTING_AGENT.md
+```
+
+The 16 types span single-swing, double-swing, sliding, pocket, barn (track + rollers), shower (glass),
+bifold (multi-panel), slide/swing combos, and `DOOR_OPENING` (a leafless cased opening). To add or
+retune a type, edit `door_types.py` and re-run `generate_goldens.py` — both the generator and the
+classifier read that one table.
+
+> **First pass — refine after viewer review.** Bi-fold / combo leaves are flat (not articulated),
+> the barn track is a straight bar + roller tabs, and the pocket pull is proud rather than recessed.
+> These simplifications are flagged in the algorithm doc for the FormX-architecture review.
+
+**Run it:**
+```bash
+python3.11 "IFC Door Converter v2/generate_goldens.py"          # (re)write the 16 goldens
+python3.11 "IFC Door Converter v2/IFC_door_converter_V2.py"     # batch INPUT → OUTPUT (-D2)
+python3.11 "IFC Door Converter v2/test_door_converter_v2.py"    # 6-layer tester (teeth)
+```
+
+**Current results:** goldens 16/16 validate clean; `verify()` passes on all 4 ADUs (all 11 doors
+rebuilt: 2 / 1 / 3 / 5) with 0 new validate errors; the tester passes **4/4 fixtures (276 checks)**,
+teeth verified — including a classification layer that pins the rebuilt FormX-type multiset (so a
+misclassification can't slip through). Spec: [`IFC Door Converter v2/IFC door converter v2 algorithm.md`](IFC%20Door%20Converter%20v2/IFC%20door%20converter%20v2%20algorithm.md).
+
+---
+
 ## The broader picture
 
 The window converter is **one component of a composable "fix any building IFC" pipeline** — one
@@ -185,7 +229,8 @@ everything else exactly, leave clean parametric geometry behind.* They chain via
 | Component | Location | Status |
 |---|---|---|
 | **Window converter** | `IFC Window Converter v2/` | ✅ Active — golden-template-swap (this README) |
-| **Door converter** | `reference/IFC Door Converter v1/` | 🔧 Reference (v1) — classification-driven, measure-and-rebuild; a golden-template v2 is next |
+| **Door converter** | `IFC Door Converter v2/` | ✅ Active — golden-template-swap, 16 FormX door types (suffix `-D2`) |
+| Door converter v1 | `reference/IFC Door Converter v1/` | 🔧 Reference — classification-driven, measure-and-rebuild (superseded by v2) |
 | Walls / levels / floors | `reference/Gal_Similar_Project_Refrences/` | Reference — the design template these tools follow |
 | *Pipeline orchestrator* | — | Planned — run the per-element converters in dependency order |
 
@@ -205,9 +250,10 @@ ifc-converter/
 ├── INPUT_IFC_FILES_HERE/        drop source ADUs here (batch input + test fixtures)
 ├── OUTPUT_IFC_FILES_HERE/       converter outputs (gitignored)
 ├── IFC Window Converter v2/     ACTIVE — the window converter
+├── IFC Door Converter v2/       ACTIVE — the door converter (golden-template-swap, 16 types)
 └── reference/
     ├── IFC Window Converter v1/        superseded by v2 (measure-and-rebuild)
-    ├── IFC Door Converter v1/          door v1 (measure-and-rebuild) — golden-template v2 next
+    ├── IFC Door Converter v1/          door v1 (measure-and-rebuild) — superseded by door v2
     ├── Gal_Similar_Project_Refrences/  walls / levels / floors tools (design template)
     └── Old Context/                    research + golden-spec prototype (see below)
 ```

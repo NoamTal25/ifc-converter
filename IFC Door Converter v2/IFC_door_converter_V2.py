@@ -1,35 +1,44 @@
 #!/usr/bin/env python3
 """
-IFC_window_converter_V2.py — FormX IFC pipeline stage: WINDOWS (golden-template-swap).
+IFC_door_converter_V2.py — FormX IFC pipeline stage: DOORS (golden-template-swap).
 
-The go-forward method (CLAUDE.md §2a): each baked ``IfcWindow`` is **classified** into one of
-FormX's defined window types (PDF "IFC Standardizer: Template Gallery categorizing"), then
-rebuilt as that type's **golden parametric template** — sized from the window's own measured
-extents and authored straight into the target file's schema + units. Everything that is NOT a
-window is left exactly as-is.
+The go-forward method (CLAUDE.md §2a): each baked ``IfcDoor`` is **classified** into one of
+FormX's 16 defined door types (PDF "IFC Standardizer: Template Gallery categorizing"), then rebuilt
+as that type's **golden parametric template** — sized from the door's own measured extents,
+coloured from the door's own harvested surface styles, and authored straight into the target file's
+schema + units. Everything that is NOT a door is left exactly as-is.
 
-How this differs from v1 (which authored one neutral hollow-frame+pane for every window):
-  * CLASSIFY → the type drives the geometry. SINGLE_PANEL (fixed/casement/awning/slider) → one
-    pane; DOUBLE_HORIZONTAL → vertical mullion + 2 panes; DOUBLE_VERTICAL / double-hung →
-    horizontal transom + 2 panes. (``classify_window.py``)
-  * Geometry comes from the SHARED recipe ``golden_geometry.py`` — the *same code* that authors
-    the reviewable golden templates (``generate_goldens.py``), so a converted window matches its
-    golden, scaled.
-  * The FormX param apparatus is authored back (the promoted "golden spec"): IfcWindowType /
-    IfcWindowStyle + lining + per-panel properties + Pset_WindowCommon (Overall/Rough W·H, Depth,
-    PanelType, HandFlipped/FacingFlipped, Split). Schema differences live in ``schema_adapter.py``.
+Mirrors the proven window converter v2 module-for-module:
+  * CLASSIFY (``classify_door.py``) → the FormX type drives the geometry recipe (panels /
+    mullions / head-rail / barn-track / handle), the operation enum, and the panel properties.
+  * Geometry comes from the SHARED recipe ``golden_door_geometry.py`` — the *same code* that authors
+    the reviewable golden templates (``generate_goldens.py``) — so a converted door matches its
+    golden, scaled. ``door_types.py`` is the single source of truth both consume.
+  * The FormX param apparatus is authored at the OCCURRENCE level: Pset_DoorCommon
+    (Overall/Rough W·H, Depth) + Pset FormX_Door_Window (HandFlipped/FacingFlipped) +
+    IfcDoorLiningProperties + per-panel IfcDoorPanelProperties — via IfcRelDefinesByProperties.
+    NEVER a second IfcDoorType (the doors are already Revit-typed; IfcRelDefinesByType is [0:1]).
+    Schema differences (IFC2X3 IfcDoorStyle vs IFC4 IfcDoorType, style wrapping, semantics
+    availability) live in ``schema_adapter.py``.
 
-Preserved verbatim from v1: edit-a-copy, measure-the-element's-own-bbox, preserve
+Preserved verbatim from the window converter: edit-a-copy, measure-the-element's-own-bbox, preserve
 GlobalId/ObjectPlacement + the opening→fill→void→host chain + spatial containment, carry surface
-styles forward, gate non-rectangular / unreadable windows, built-in verify(). The **Body**
+styles forward, gate non-rectangular / unreadable doors, built-in verify(). The **Body**
 representation is swapped in place (matched by ``.id()`` — §6 gotcha); **FootPrint is preserved**.
 
-Output is written with the suffix "-WIN2" before the extension. Self-contained (ifcopenshell only).
+Door-specific deltas:
+  * FOLDING-DEPTH CLAMP — bi-fold / folding-combo doors export partly folded, so their measured
+    through-wall depth is the folded *projection*, not the leaf thickness (§6). Depth is clamped for
+    folding types so we don't author a ~1.5-ft-thick door.
+  * Verify/test bbox drift is measured on the FACE PLANE (two largest axes), since proud handles /
+    the depth clamp deliberately change the through-wall envelope.
+
+Output is written with the suffix "-D2" before the extension. Self-contained (ifcopenshell only).
 
 Usage:
-    python3.11 IFC_window_converter_V2.py                  # batch INPUT_IFC_FILES_HERE → OUTPUT…
-    python3.11 IFC_window_converter_V2.py <in.ifc>         # → OUTPUT_IFC_FILES_HERE/<in>-WIN2.ifc
-    python3.11 IFC_window_converter_V2.py <in.ifc> <out.ifc>
+    python3.11 IFC_door_converter_V2.py                  # batch INPUT_IFC_FILES_HERE → OUTPUT…
+    python3.11 IFC_door_converter_V2.py <in.ifc>         # → OUTPUT_IFC_FILES_HERE/<in>-D2.ifc
+    python3.11 IFC_door_converter_V2.py <in.ifc> <out.ifc>
 """
 import shutil
 import sys
@@ -44,9 +53,10 @@ import ifcopenshell.util.element as ifc_element
 import ifcopenshell.util.placement as ifc_placement
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import golden_geometry as gg
+import golden_door_geometry as gg
 import schema_adapter as sa
-from classify_window import classify
+import door_types
+from classify_door import classify
 
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent
@@ -54,18 +64,14 @@ _ROOT = _HERE.parent
 # ══════════════════════════════════════════════════════════════════════════════
 # Config
 # ══════════════════════════════════════════════════════════════════════════════
-SUFFIX = "-WIN2"
+SUFFIX = "-D2"
 INPUT_DIR = _ROOT / "INPUT_IFC_FILES_HERE"
 OUTPUT_DIR = _ROOT / "OUTPUT_IFC_FILES_HERE"
 
-# Frame proportions in METRES, converted to each file's units at runtime (files may be ft/mm/m).
-FRAME_THK_M = 0.05      # lining face width (50 mm)
-GLAZE_THK_M = 0.020     # glazing-unit thickness (20 mm)
-BAR_THK_M   = 0.05      # mullion / transom thickness (50 mm)
-
-MARK = "FormX-WIN2 parametric window"   # stamped on Description for idempotency
-BBOX_TOL_M = 0.02       # window world-bbox drift tolerance in verify (m)
-FILL_MIN = 0.95         # face-fill ratio below which a window is NOT rectangular → preserve
+MARK = "FormX-D2 parametric door"   # stamped on Description for idempotency
+BBOX_TOL_M = 0.02       # door world-bbox drift tolerance in verify (m), measured on the face plane
+FILL_MIN = 0.95         # face-fill ratio below which a door is NOT rectangular → preserve
+MAX_FOLD_DEPTH_M = 0.20 # folding doors export partly folded → clamp through-wall depth to this (m)
 
 _GEOM_LOCAL = geom.settings(); _GEOM_LOCAL.set("use-world-coords", False)
 _GEOM_WORLD = geom.settings(); _GEOM_WORLD.set("use-world-coords", True)
@@ -74,28 +80,27 @@ _GEOM_WORLD = geom.settings(); _GEOM_WORLD.set("use-world-coords", True)
 # ══════════════════════════════════════════════════════════════════════════════
 # Geometry measurement (the element's OWN local frame; gates)
 # ══════════════════════════════════════════════════════════════════════════════
-def _local_verts(win, scale):
-    """Window vertices in its OWN local frame, file units. geom returns metres → /scale."""
-    sh = geom.create_shape(_GEOM_LOCAL, win)
+def _local_verts(door, scale):
+    """Door vertices in its OWN local frame, file units. geom returns metres → /scale."""
+    sh = geom.create_shape(_GEOM_LOCAL, door)
     v = np.array(sh.geometry.verts, dtype=float).reshape(-1, 3) / scale
     if v.size == 0:
         raise ValueError("empty geometry")
     return v
 
 
-def _axes_from_bbox(verts, win):
-    """Return (center, ext, depth_axis, width_axis, height_axis, dirs) for the local bbox.
+def _axes_from_bbox(door, verts):
+    """Return (center, ext, depth, width, height, dirs) for the local bbox.
 
     depth = thinnest axis (through-wall). Of the two face axes, the one whose world direction is
-    most vertical (largest |world-Z|) is height; the other is width — so a mullion/transom is
-    oriented correctly regardless of how the element is rotated."""
+    most vertical (largest |world-Z|) is height; the other is width — so mullions / rails / the
+    barn track orient correctly regardless of how the door is rotated."""
     mn, mx = verts.min(0), verts.max(0)
     ext = mx - mn
     center = (mn + mx) / 2.0
     depth = int(np.argmin(ext))
     face = [i for i in range(3) if i != depth]
-    # world direction of each local axis = columns of the placement rotation
-    M = ifc_placement.get_local_placement(win.ObjectPlacement)
+    M = ifc_placement.get_local_placement(door.ObjectPlacement)
     world_z = [abs(float(M[2, i])) for i in range(3)]
     height = max(face, key=lambda i: world_z[i])
     width = face[0] if face[1] == height else face[1]
@@ -142,14 +147,14 @@ def _face_fill_ratio(verts):
     return _hull_area_2d(verts[:, [u, w]]) / bbox
 
 
-def _world_bbox(win):
-    sh = geom.create_shape(_GEOM_WORLD, win)
+def _world_bbox(door):
+    sh = geom.create_shape(_GEOM_WORLD, door)
     v = np.array(sh.geometry.verts, dtype=float).reshape(-1, 3)
     return v.min(0), v.max(0)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Surface styles (harvest the originals; glass = transparent, frame = opaque)
+# Surface styles (harvest the door's OWN styles; transparent = glass, opaque = everything else)
 # ══════════════════════════════════════════════════════════════════════════════
 def _max_transparency(styles):
     t = None
@@ -161,10 +166,13 @@ def _max_transparency(styles):
     return t
 
 
-def _harvest_styles(model, win):
-    """Return (glass_styles, frame_styles) reusing the window's own IfcSurfaceStyle entities,
-    bucketed by transparency. Read BEFORE the Body is swapped. Either may be None."""
-    rep = win.Representation
+def _harvest_styles(model, door):
+    """Return (glass_styles, opaque_styles) reusing the door's OWN IfcSurfaceStyle entities,
+    bucketed by transparency. Read BEFORE the Body is swapped. Either may be None.
+
+    This is how a converted door 'takes on the values of the baked door': its real colours /
+    transparency are carried straight onto the clean parametric parts."""
+    rep = door.Representation
     if not rep or not rep.Representations:
         return None, None
     items = set()
@@ -174,7 +182,7 @@ def _harvest_styles(model, win):
                 items.update(it.MappingSource.MappedRepresentation.Items or [])
             else:
                 items.add(it)
-    glass = frame = None
+    glass = opaque = None
     glass_t = 0.0
     for styled in model.by_type("IfcStyledItem"):
         if styled.Item not in items:
@@ -183,28 +191,34 @@ def _harvest_styles(model, win):
         if t is not None and t > 0:
             if t >= glass_t:
                 glass_t, glass = t, styled.Styles
-        elif frame is None:
-            frame = styled.Styles
-    return glass, frame
+        elif opaque is None:
+            opaque = styled.Styles
+    return glass, opaque
 
 
-def _apply_styles(model, items, glass, frame):
-    """Attach styles to the role-tagged (solid, role) items; glass on panes, frame on lining+bars."""
-    if glass is None and frame is None:
-        glass, frame = sa.build_default_styles(model)
-    glass = glass or frame
-    frame = frame or glass
+def _apply_styles(model, items, glass, opaque):
+    """Attach styles to the role-tagged (solid, role) items. A panel gets the harvested glass
+    style when the door actually had glass; everything else (frame / mullion / rail / track /
+    roller / handle) and opaque-leaf panels get the opaque style.
+
+    If the door donated ONLY a transparent style (no opaque bucket), synthesize a default opaque
+    style for the non-panel parts — otherwise an all-glass door family would paint its frame /
+    mullion / handle see-through too."""
+    if opaque is None:
+        opaque = sa.build_default_styles(model)[1]      # default opaque 'Door' style
+    if glass is None:
+        glass = opaque
     for solid, role in items:
-        model.create_entity("IfcStyledItem", Item=solid,
-                            Styles=(glass if role == "pane" else frame))
+        use_glass = (role == "panel" and glass is not opaque)
+        model.create_entity("IfcStyledItem", Item=solid, Styles=(glass if use_glass else opaque))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Representation swap (Body only; preserve FootPrint) + old-rep cleanup
 # ══════════════════════════════════════════════════════════════════════════════
-def _body_shaperep(win):
-    """The window's 'Body' IfcShapeRepresentation, or None."""
-    rep = win.Representation
+def _body_shaperep(door):
+    """The door's 'Body' IfcShapeRepresentation, or None."""
+    rep = door.Representation
     if not rep:
         return None
     for r in (rep.Representations or []):
@@ -214,7 +228,7 @@ def _body_shaperep(win):
 
 
 def _cleanup_old_shaperep(model, sr):
-    """Remove an orphaned per-window Body shaperep + its per-window items. De-references any
+    """Remove an orphaned per-door Body shaperep + its per-door items. De-references any
     IfcPresentationLayerAssignment first; NEVER removes a shared IfcRepresentationMap."""
     try:
         for inv in list(model.get_inverse(sr)):
@@ -225,18 +239,18 @@ def _cleanup_old_shaperep(model, sr):
                 else:
                     model.remove(inv)
         for it in list(sr.Items or []):
-            if len(model.get_inverse(it)) <= 1:      # per-window mapped item / solid
+            if len(model.get_inverse(it)) <= 1:      # per-door mapped item / solid
                 model.remove(it)
         model.remove(sr)
     except Exception as e:
         print(f"     (old-rep cleanup skipped: {e!r})")
 
 
-def _swap_body(model, win, new_items, ctx):
+def _swap_body(model, door, new_items, ctx):
     """Replace only the Body shaperep with one holding `new_items`, preserving FootPrint &c.
     Matches the old Body by `.id()` (ifcopenshell returns fresh wrappers — `is` never matches)."""
-    prod = win.Representation
-    old_body = _body_shaperep(win)
+    prod = door.Representation
+    old_body = _body_shaperep(door)
     new_body = model.create_entity(
         "IfcShapeRepresentation", ContextOfItems=ctx,
         RepresentationIdentifier="Body", RepresentationType="SweptSolid",
@@ -249,88 +263,95 @@ def _swap_body(model, win, new_items, ctx):
         prod.Representations = tuple(prod.Representations) + (new_body,)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Re-author one window
-# ══════════════════════════════════════════════════════════════════════════════
-def _ctx_for_body(win):
-    body = _body_shaperep(win)
+def _ctx_for_body(door):
+    body = _body_shaperep(door)
     if body is not None:
         return body.ContextOfItems
-    rep = win.Representation
+    rep = door.Representation
     return rep.Representations[0].ContextOfItems if rep and rep.Representations else None
 
 
-def reauthor_window(model, win, scale, recipe, owner):
-    """Rebuild win as its golden template, sized to its measured extents. Returns the local ext."""
-    verts = _local_verts(win, scale)
-    center, ext, di, wi, hi, dirs = _axes_from_bbox(verts, win)
+# ══════════════════════════════════════════════════════════════════════════════
+# Re-author one door
+# ══════════════════════════════════════════════════════════════════════════════
+def reauthor_door(model, door, scale, recipe, owner):
+    """Rebuild door as its golden template, sized to its measured extents + coloured from its own
+    styles. Returns the local ext."""
+    verts = _local_verts(door, scale)
+    center, ext, di, wi, hi, dirs = _axes_from_bbox(door, verts)
     depth_dir, width_dir, _ = dirs
     width, height, depth = float(ext[wi]), float(ext[hi]), float(ext[di])
 
-    glass, frame_style = _harvest_styles(model, win)        # read BEFORE swapping the Body
+    # capture the source occurrence operation BEFORE re-authoring — it carries real Revit
+    # handedness we must preserve rather than overwrite with the class-canonical value.
+    existing_op = getattr(door, "OperationType", None)
 
-    items = gg.build_window_items(
-        model, width, height, depth,
-        frame_thk=FRAME_THK_M / scale, glaze_thk=GLAZE_THK_M / scale,
-        bar_thk=BAR_THK_M / scale, split=recipe["split"],
+    # FOLDING-DEPTH CLAMP (§6): a bi-fold door's bbox depth is the folded projection, not the leaf.
+    if recipe.get("folding"):
+        depth = min(depth, MAX_FOLD_DEPTH_M / scale)
+
+    glass, opaque = _harvest_styles(model, door)            # read BEFORE swapping the Body
+    dims = gg.dims_in_units(scale)
+
+    items = gg.build_door_items(
+        model, width, height, depth, recipe=recipe["recipe"], dims=dims,
         center=tuple(center), depth_dir=depth_dir, width_dir=width_dir)
 
-    _apply_styles(model, items, glass, frame_style)
-    _swap_body(model, win, items, _ctx_for_body(win))
+    _apply_styles(model, items, glass, opaque)
+    _swap_body(model, door, items, _ctx_for_body(door))
 
-    _author_formx_apparatus(model, win, recipe, owner, scale, width, height, depth)
+    _author_formx_apparatus(model, door, recipe, owner, dims, width, height, depth)
 
-    win.Name = recipe["name"]
-    win.Description = MARK
-    sa.set_window_semantics(win, recipe.get("predef"), recipe.get("part_type"))
+    door.Name = recipe["name"]
+    door.Description = MARK
+    if hasattr(door, "OverallWidth"):
+        door.OverallWidth = float(width)
+    if hasattr(door, "OverallHeight"):
+        door.OverallHeight = float(height)
+    sa.set_door_semantics(door, "DOOR", recipe.get("operation"), recipe.get("user_op"),
+                          existing_op=existing_op)
     return ext
 
 
-def _author_formx_apparatus(model, win, recipe, owner, scale, width, height, depth):
-    """Author the FormX param apparatus at the OCCURRENCE level (never a second IfcWindowType —
-    these windows are already typed by Revit, and IfcRelDefinesByType is [0:1]):
-      * IfcWindowLiningProperties + IfcWindowPanelProperties (the parametric window detail), and
-      * Pset_WindowCommon (the PDF param contract: Overall/Rough W·H, Depth, PanelType, Split,
-        HandFlipped/FacingFlipped),
-    each linked via IfcRelDefinesByProperties (occurrence-level property definitions are
-    many-per-element, so no collision with the preserved type relationship).
+def _author_formx_apparatus(model, door, recipe, owner, dims, width, height, depth):
+    """Author the FormX param apparatus at the OCCURRENCE level (never a second IfcDoorType):
+      * IfcDoorLiningProperties + IfcDoorPanelProperties (the parametric door detail), and
+      * Pset_DoorCommon (Overall/Rough W·H, Depth, Reference, IsExternal) + Pset FormX_Door_Window
+        (HandFlipped / FacingFlipped),
+    each linked via IfcRelDefinesByProperties (occurrence-level definitions are many-per-element,
+    so no collision with the preserved type relationship).
 
     The lining/panel property entities are authored VALUE-LESS (no dimensional fields), matching the
-    flush FormX-native reference: the FormX param contract rides on Pset_WindowCommon +
-    IfcWindow.OverallWidth/Height, and Gaudi draws nothing from value-less props. (The pane↔frame
-    "space" was the hollow-profile frame, since replaced by 4 solid bars — CLAUDE.md §6.)"""
-    frame_thk = FRAME_THK_M / scale
-    bar_thk = BAR_THK_M / scale              # used by the Split{Width,Height} Pset value below
-    lining = sa.make_lining_props(model, owner)
-    panels = sa.make_panel_props(model, owner, recipe["panels"])
-    for pdef in [lining] + panels:
-        if pdef is not None:
-            sa.relate_propertyset(model, owner, pdef, win)
+    flush FormX-native reference: the FormX param contract rides on Pset_DoorCommon +
+    IfcDoor.OverallWidth/Height, and Gaudi draws nothing from value-less props. (The pane↔frame
+    "space" was the hollow-profile lining, since replaced by 4 solid bars — CLAUDE.md §6.)"""
+    frame_thk = dims["frame_thk"]
 
-    rough = 2 * frame_thk                    # simple rough-opening margin (+1 lining each side)
+    lining = sa.make_lining_props(model, owner)
+    panel_props = sa.make_panel_props(model, owner, recipe["panel_props"])
+    for pdef in ([lining] + panel_props):
+        if pdef is not None:
+            sa.relate_propertyset(model, owner, pdef, door)
+
+    is_external = door_types.TYPES[recipe["formx_type"]]["is_external"]
     props = [
         sa.psv(model, "Reference",     recipe["formx_type"], "IfcIdentifier"),
+        sa.psv(model, "IsExternal",    bool(is_external),    "IfcBoolean"),
         sa.psv(model, "OverallWidth",  width,                "IfcPositiveLengthMeasure"),
         sa.psv(model, "OverallHeight", height,               "IfcPositiveLengthMeasure"),
         sa.psv(model, "Depth",         depth,                "IfcPositiveLengthMeasure"),
-        sa.psv(model, "RoughWidth",    width + rough,        "IfcPositiveLengthMeasure"),
-        sa.psv(model, "RoughHeight",   height + rough,       "IfcPositiveLengthMeasure"),
-        sa.psv(model, "HandFlipped",   False,                "IfcBoolean"),
-        sa.psv(model, "FacingFlipped", False,                "IfcBoolean"),
+        sa.psv(model, "RoughWidth",    width + 2 * frame_thk, "IfcPositiveLengthMeasure"),
+        sa.psv(model, "RoughHeight",   height + frame_thk,    "IfcPositiveLengthMeasure"),
     ]
-    if recipe["split"] == "V":
-        props.append(sa.psv(model, "SplitWidth",
-                            (width - 2 * frame_thk - bar_thk) / 2.0, "IfcPositiveLengthMeasure"))
-    elif recipe["split"] == "H":
-        props.append(sa.psv(model, "SplitHeight",
-                            (height - 2 * frame_thk - bar_thk) / 2.0, "IfcPositiveLengthMeasure"))
-    for k, v in recipe.get("pset_panel", {}).items():
-        props.append(sa.psv(model, k, v, "IfcLabel"))
-    sa.add_pset(model, owner, "Pset_WindowCommon", props, win)
+    sa.add_pset(model, owner, "Pset_DoorCommon", props, door)
+    sa.add_pset(model, owner, "FormX_Door_Window", [
+        sa.psv(model, "HandFlipped",   False, "IfcBoolean"),
+        sa.psv(model, "FacingFlipped", False, "IfcBoolean"),
+    ], door)
 
 
-def _already_converted(win):
-    return (win.Description or "") == MARK
+def _already_converted(door):
+    return (door.Description or "") == MARK
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -345,32 +366,32 @@ def convert(src_path, out_path):
     scale = ifc_unit.calculate_unit_scale(model)
     owner = next(iter(model.by_type("IfcOwnerHistory")), None)
 
-    wins = model.by_type("IfcWindow")
-    print(f"[scan] {len(wins)} IfcWindow | unit scale {scale:.4f} m/unit | schema {model.schema}")
+    doors = model.by_type("IfcDoor")
+    print(f"[scan] {len(doors)} IfcDoor | unit scale {scale:.4f} m/unit | schema {model.schema}")
     stats = Counter()
-    for w in wins:
-        wt = ifc_element.get_type(w)
-        if _already_converted(w):
+    for d in doors:
+        dt = ifc_element.get_type(d)
+        if _already_converted(d):
             stats["already"] += 1
             continue
-        recipe = classify(w, wt)
-        nm = (w.Name or "?")
+        recipe = classify(d, dt)
+        nm = (d.Name or "?")
         if recipe.get("gate"):
             stats["gated"] += 1
             print(f"  [keep]    {nm[:46]:46}  GATE: {recipe['reason']}")
             continue
         try:
-            verts = _local_verts(w, scale)
+            verts = _local_verts(d, scale)
             fill = _face_fill_ratio(verts)
             if fill < FILL_MIN:
                 stats["kept-nonrect"] += 1
                 print(f"  [keep]    {nm[:46]:46}  non-rectangular (fill {fill:.2f}) → preserved")
                 continue
-            if _body_shaperep(w) is None:
+            if _body_shaperep(d) is None:
                 stats["kept-nobody"] += 1
                 print(f"  [keep]    {nm[:46]:46}  no Body representation → preserved")
                 continue
-            reauthor_window(model, w, scale, recipe, owner)
+            reauthor_door(model, d, scale, recipe, owner)
             stats["rebuilt"] += 1
             print(f"  [rebuilt] {nm[:46]:46}  → {recipe['formx_type']} ({recipe['reason']})")
         except Exception as e:
@@ -386,14 +407,14 @@ def convert(src_path, out_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Built-in verification (reopen src + out; assert "only the windows changed")
+# Built-in verification (reopen src + out; assert "only the doors changed")
 # ══════════════════════════════════════════════════════════════════════════════
 _PRESERVE_TYPES = [
-    "IfcWindow", "IfcWall", "IfcWallStandardCase", "IfcSlab", "IfcRoof", "IfcDoor",
+    "IfcDoor", "IfcWindow", "IfcWall", "IfcWallStandardCase", "IfcSlab", "IfcRoof",
     "IfcOpeningElement", "IfcSpace", "IfcBuildingStorey", "IfcCovering",
     "IfcFurnishingElement", "IfcBuildingElementProxy",
     "IfcRelFillsElement", "IfcRelVoidsElement", "IfcRelContainedInSpatialStructure",
-    "IfcRelAggregates",
+    "IfcRelDefinesByType", "IfcRelAggregates",
 ]
 
 
@@ -412,18 +433,16 @@ def verify(src_path, out_path):
         ok &= good
         print(f"    {t:34s} {nb} → {na}  [{'OK' if good else 'CHANGED!'}]")
 
-    gb = {w.GlobalId for w in before.by_type("IfcWindow")}
-    ga = {w.GlobalId for w in after.by_type("IfcWindow")}
+    gb = {d.GlobalId for d in before.by_type("IfcDoor")}
+    ga = {d.GlobalId for d in after.by_type("IfcDoor")}
     good = gb == ga; ok &= good
-    print(f"  window GlobalIds preserved: {len(gb & ga)}/{len(gb)}  [{'OK' if good else 'CHANGED!'}]")
+    print(f"  door GlobalIds preserved: {len(gb & ga)}/{len(gb)}  [{'OK' if good else 'CHANGED!'}]")
 
-    # fill/void edges identical (windows stay in their openings)
     eb = sum(len(before.by_type(t)) for t in ("IfcRelFillsElement", "IfcRelVoidsElement"))
     ea = sum(len(after.by_type(t)) for t in ("IfcRelFillsElement", "IfcRelVoidsElement"))
     good = eb == ea; ok &= good
     print(f"  fill/void relationship edges: {eb} → {ea}  [{'OK' if good else 'CHANGED!'}]")
 
-    # openings unmoved
     bplace = {o.GlobalId: ifc_placement.get_local_placement(o.ObjectPlacement)
               for o in before.by_type("IfcOpeningElement") if o.ObjectPlacement}
     moved = 0
@@ -435,37 +454,36 @@ def verify(src_path, out_path):
     ok &= moved == 0
     print(f"  openings moved: {moved}  [{'OK — none moved' if moved == 0 else 'CHANGED!'}]")
 
-    # each rebuilt window keeps its placement exactly (kernel-free; stays in its opening)
-    bpl = {w.GlobalId: ifc_placement.get_local_placement(w.ObjectPlacement)
-           for w in before.by_type("IfcWindow") if w.ObjectPlacement}
+    bpl = {d.GlobalId: ifc_placement.get_local_placement(d.ObjectPlacement)
+           for d in before.by_type("IfcDoor") if d.ObjectPlacement}
     bad = 0
-    for w in after.by_type("IfcWindow"):
-        if (w.Description or "") != MARK:
+    for d in after.by_type("IfcDoor"):
+        if (d.Description or "") != MARK:
             continue
-        m0 = bpl.get(w.GlobalId)
-        if m0 is None or w.ObjectPlacement is None or \
-           not np.allclose(m0, ifc_placement.get_local_placement(w.ObjectPlacement), atol=1e-9):
+        m0 = bpl.get(d.GlobalId)
+        if m0 is None or d.ObjectPlacement is None or \
+           not np.allclose(m0, ifc_placement.get_local_placement(d.ObjectPlacement), atol=1e-9):
             bad += 1
     ok &= bad == 0
-    print(f"  rebuilt windows keep placement: {'OK' if bad == 0 else f'{bad} drifted!'}")
+    print(f"  rebuilt doors keep placement: {'OK' if bad == 0 else f'{bad} drifted!'}")
 
-    # rebuilt windows occupy the same world box on the FACE PLANE (depth envelope may shift
-    # by the glaze inset; measure drift on the two largest-extent axes only)
+    # rebuilt doors occupy the same world box on the FACE PLANE (depth envelope may shift by the
+    # folding clamp / proud handles; measure drift on the two largest-extent axes only)
     bbox_b = {}
-    for w in before.by_type("IfcWindow"):
+    for d in before.by_type("IfcDoor"):
         try:
-            bbox_b[w.GlobalId] = _world_bbox(w)
+            bbox_b[d.GlobalId] = _world_bbox(d)
         except Exception:
             pass
     max_drift = 0.0; checked = 0
-    for w in after.by_type("IfcWindow"):
-        if (w.Description or "") != MARK:
+    for d in after.by_type("IfcDoor"):
+        if (d.Description or "") != MARK:
             continue
-        b = bbox_b.get(w.GlobalId)
+        b = bbox_b.get(d.GlobalId)
         if b is None:
             continue
         try:
-            mn_a, mx_a = _world_bbox(w)
+            mn_a, mx_a = _world_bbox(d)
         except Exception:
             continue
         size = (b[1] - b[0])
@@ -473,24 +491,22 @@ def verify(src_path, out_path):
         drift = float(max(np.abs(np.r_[(mn_a - b[0])[face], (mx_a - b[1])[face]])))
         max_drift = max(max_drift, drift); checked += 1
     good = max_drift <= BBOX_TOL_M; ok &= good
-    print(f"  rebuilt window face-bbox drift (n={checked}): max {max_drift * 1000:.1f} mm  "
+    print(f"  rebuilt door face-bbox drift (n={checked}): max {max_drift * 1000:.1f} mm  "
           f"[{'OK' if good else f'> {BBOX_TOL_M*1000:.0f} mm!'}]")
 
-    # every rebuilt window's new items carry surface styles
     styled_ids = {s.Item.id() for s in after.by_type("IfcStyledItem") if s.Item}
     unstyled = 0
-    for w in after.by_type("IfcWindow"):
-        if (w.Description or "") != MARK:
+    for d in after.by_type("IfcDoor"):
+        if (d.Description or "") != MARK:
             continue
-        body = _body_shaperep(w)
+        body = _body_shaperep(d)
         items = list(body.Items or []) if body else []
         if items and not all(it.id() in styled_ids for it in items):
             unstyled += 1
     ok &= unstyled == 0
-    print(f"  rebuilt windows missing styles: {unstyled}  "
+    print(f"  rebuilt doors missing styles: {unstyled}  "
           f"[{'OK — all styled' if unstyled == 0 else 'WOULD RENDER GRAY!'}]")
 
-    # schema-validity gate — must not INTRODUCE errors
     try:
         import ifcopenshell.validate as V
         lb = V.json_logger(); V.validate(before, lb)

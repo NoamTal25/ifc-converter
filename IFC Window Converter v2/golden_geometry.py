@@ -6,9 +6,10 @@ converter (``IFC_window_converter_V2.py``, which rebuilds baked windows in-place
 geometry through this one module. That guarantees a converted window is *provably identical*
 to its golden template, only scaled to the measured instance dimensions.
 
-Geometry entities (``IfcExtrudedAreaSolid`` / ``IfcRectangleProfileDef`` /
-``IfcRectangleHollowProfileDef`` / placements / points / directions) are stable across
-IFC2X3 / IFC4 / IFC4X3, so this module is schema-agnostic. The schema-*specific* parts
+Geometry entities (``IfcExtrudedAreaSolid`` / ``IfcRectangleProfileDef`` / placements / points /
+directions) are stable across IFC2X3 / IFC4 / IFC4X3, so this module is schema-agnostic. (The frame
+is 4 solid ``IfcRectangleProfileDef`` bars, NOT an ``IfcRectangleHollowProfileDef`` — Gaudi
+mis-renders the hollow profile; §6.) The schema-*specific* parts
 (surface styles, window-type & panel property sets, Pset value types) live in
 ``schema_adapter.py``.
 
@@ -22,7 +23,7 @@ import numpy as np
 # ── canonical FormX frame proportions (millimetres) — used by the standalone goldens.
 # The converter passes its own file-unit values (FRAME_THK_M / scale, …) instead.
 LINING_DEPTH = 120.0   # frame depth into wall (extrusion depth)
-LINING_THK   =  60.0   # frame face width  (hollow-profile WallThickness)
+LINING_THK   =  60.0   # frame face width  (width of each of the 4 lining bars)
 GLAZE_THK    =  24.0   # glazing unit thickness
 BAR_THK      =  60.0   # mullion / transom thickness
 
@@ -59,12 +60,6 @@ def _rect(f, xdim, ydim, cx=0.0, cy=0.0):
                            Position=_ax2(f, cx, cy), XDim=float(xdim), YDim=float(ydim))
 
 
-def _hollow(f, xdim, ydim, wall):
-    return f.create_entity("IfcRectangleHollowProfileDef", ProfileType="AREA",
-                           Position=_ax2(f, 0, 0), XDim=float(xdim), YDim=float(ydim),
-                           WallThickness=float(wall))
-
-
 # ── the recipe ───────────────────────────────────────────────────────────────────
 def build_window_items(f, width, height, depth, *, frame_thk, glaze_thk, bar_thk, split,
                         center=(0.0, 0.0, 0.0), depth_dir=(0.0, 0.0, 1.0),
@@ -72,9 +67,16 @@ def build_window_items(f, width, height, depth, *, frame_thk, glaze_thk, bar_thk
     """Author one window's body as clean parametric swept solids.
 
     Returns a list of ``(solid, role)`` where role ∈ {"frame", "bar", "pane"}:
-      - exactly one "frame" (hollow rectangular lining),
+      - exactly FOUR "frame" solids (the lining border, as 4 solid bars — see note below),
       - 0 or 1 "bar" (mullion if split='V', transom if split='H'),
       - 1 or 2 "pane" (centred glazing).
+
+    FRAME = 4 SOLID BARS, NOT a hollow profile (CLAUDE.md §6). FormX's viewer Gaudi mis-renders
+    ``IfcRectangleHollowProfileDef`` — it draws the ring's inner opening larger than authored,
+    leaving a uniform "space" band between the lining and the pane (Blender/openIFC render the same
+    mesh flush; the repo README also notes openIFC *skips* hollow-profile frames). Building the
+    border from four plain ``IfcRectangleProfileDef`` bars renders flush in every viewer, including
+    Gaudi (confirmed by side-by-side test), at the cost of 4 solids instead of 1.
 
     ``split``: None → single pane · 'V' → vertical mullion, left/right panes
     (DOUBLE_HORIZONTAL) · 'H' → horizontal transom, top/bottom panes (DOUBLE_VERTICAL /
@@ -89,38 +91,54 @@ def build_window_items(f, width, height, depth, *, frame_thk, glaze_thk, bar_thk
     glaze_thk = float(min(glaze_thk, 0.6 * depth))
     bar_thk   = float(min(bar_thk, 0.4 * min(width, height)))
 
-    items = []
-    # Outer lining frame — the single hollow profile, full depth.
-    frame = _extrude_along(f, _hollow(f, width, height, frame_thk),
-                           center, depth_dir, width_dir, depth)
-    items.append((frame, "frame"))
+    # Glazing fills the FULL lining depth and exactly fills the opening, flush with the lining
+    # faces — so there is no recessed "well" (the Gaudi gap) and the glass front tiles cleanly
+    # against the lining front (adjacent areas, non-overlapping → no z-fighting). The
+    # mullion/transom run the FULL window extent so they meet the head/sill/jambs instead of
+    # stopping at the inner opening (they used to end at iH/iW, leaving the gap at the frame top).
+    glaze_depth = depth
 
     iW = width - 2 * frame_thk     # inner glazed-opening width
     iH = height - 2 * frame_thk    # inner glazed-opening height
 
+    items = []
+    # Outer lining frame — FOUR solid bars (top/bottom span full width; left/right span the inner
+    # height between them), forming a border of thickness `frame_thk`. Replaces the single
+    # IfcRectangleHollowProfileDef, which Gaudi mis-renders (the pane↔frame "space" — §6).
+    items += [
+        (_extrude_along(f, _rect(f, width, frame_thk, cy=(height - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),   # head
+        (_extrude_along(f, _rect(f, width, frame_thk, cy=-(height - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),   # sill
+        (_extrude_along(f, _rect(f, frame_thk, iH, cx=-(width - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),   # left jamb
+        (_extrude_along(f, _rect(f, frame_thk, iH, cx=(width - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),   # right jamb
+    ]
+
     if split == "V":
-        # Vertical mullion centred in the opening; left + right panes.
+        # Vertical mullion between the jambs (meets head + sill); left + right panes.
         items.append((_extrude_along(f, _rect(f, bar_thk, iH),
                                      center, depth_dir, width_dir, depth), "bar"))
         pane_w = (iW - bar_thk) / 2.0
         off = bar_thk / 2.0 + pane_w / 2.0
         for cx in (-off, off):
             items.append((_extrude_along(f, _rect(f, pane_w, iH, cx=cx),
-                                        center, depth_dir, width_dir, glaze_thk), "pane"))
+                                        center, depth_dir, width_dir, glaze_depth), "pane"))
 
     elif split == "H":
-        # Horizontal transom centred in the opening; top + bottom panes.
+        # Horizontal transom between the jambs (meets head + sill); top + bottom panes.
         items.append((_extrude_along(f, _rect(f, iW, bar_thk),
                                      center, depth_dir, width_dir, depth), "bar"))
         pane_h = (iH - bar_thk) / 2.0
         off = bar_thk / 2.0 + pane_h / 2.0
         for cy in (off, -off):
             items.append((_extrude_along(f, _rect(f, iW, pane_h, cy=cy),
-                                        center, depth_dir, width_dir, glaze_thk), "pane"))
+                                        center, depth_dir, width_dir, glaze_depth), "pane"))
 
     else:
-        # Single centred pane.
+        # Single pane filling the opening.
         items.append((_extrude_along(f, _rect(f, iW, iH),
-                                     center, depth_dir, width_dir, glaze_thk), "pane"))
+                                     center, depth_dir, width_dir, glaze_depth), "pane"))
 
     return items

@@ -196,25 +196,19 @@ def _build_psets(f, owner, window, spec):
 # Lining + panel properties
 # ---------------------------------------------------------------------------
 def _build_window_props(f, owner, spec):
-    W, H = spec["W"], spec["H"]
-    lining_kw = dict(GlobalId=guid.new(), OwnerHistory=owner, Name="Lining",
-                     LiningDepth=LINING_DEPTH, LiningThickness=LINING_THK)
-    split = spec.get("split")
-    if split == "V":
-        lining_kw.update(MullionThickness=BAR_THK, FirstMullionOffset=W / 2.0)
-    elif split == "H":
-        lining_kw.update(TransomThickness=BAR_THK, FirstTransomOffset=H / 2.0)
-    lining = f.create_entity("IfcWindowLiningProperties", **lining_kw)
-
+    """Author the lining + per-panel property ENTITIES value-LESS (no dimensional fields), matching
+    the flush FormX-native reference. Gaudi renders an IfcWindow parametrically from these *values*
+    — a valued lining/panel set makes it draw its own inset pane (the "gap"); a value-less set lets
+    it render the flush Body mesh. The geometry (build_window_items) is unchanged. (CLAUDE.md §6.)"""
+    lining = f.create_entity("IfcWindowLiningProperties",
+                             GlobalId=guid.new(), OwnerHistory=owner, Name="Lining")
     panels = []
     for pos, op_type in spec["ifc_panels"]:
         panels.append(f.create_entity("IfcWindowPanelProperties",
                                       GlobalId=guid.new(), OwnerHistory=owner,
                                       Name=f"Panel-{pos}",
                                       OperationType=op_type,
-                                      PanelPosition=pos,
-                                      FrameDepth=LINING_DEPTH,
-                                      FrameThickness=LINING_THK))
+                                      PanelPosition=pos))
     return lining, panels
 
 
