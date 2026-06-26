@@ -89,21 +89,12 @@ def build_window_items(f, width, height, depth, *, frame_thk, glaze_thk, bar_thk
     glaze_thk = float(min(glaze_thk, 0.6 * depth))
     bar_thk   = float(min(bar_thk, 0.4 * min(width, height)))
 
-    # Glazing seating (fixes the Gaudi "space"/well + the openIFC z-fighting "frost"):
-    #  - glaze_depth: the pane fills ~the full lining depth (small setback each face so it isn't
-    #    coplanar with the open-tube rim) instead of a thin slab floating mid-depth → no well.
-    #  - rebate: grow each pane so it laps a few mm UNDER the lining (and any bar) instead of
-    #    meeting it on a coincident face → no z-fighting. rebate < frame_thk keeps the pane inset
-    #    within the outer frame (so the manipulability invariant holds), and rebate < bar_thk/2
-    #    keeps the two panes of a split from touching under the mullion/transom.
-    setback     = 0.04 * depth
-    glaze_depth = max(depth - 2.0 * setback, glaze_thk)
-    rebate      = 0.4 * min(frame_thk, bar_thk)
-
-    def _pane(xd, yd, cx=0.0, cy=0.0):
-        # grow by the rebate on every side; centre unchanged → laps all surrounding borders
-        return _extrude_along(f, _rect(f, xd + 2.0 * rebate, yd + 2.0 * rebate, cx=cx, cy=cy),
-                              center, depth_dir, width_dir, glaze_depth)
+    # Glazing fills the FULL lining depth and exactly fills the opening, flush with the lining
+    # faces — so there is no recessed "well" (the Gaudi gap) and the glass front tiles cleanly
+    # against the lining front (adjacent areas, non-overlapping → no z-fighting). The
+    # mullion/transom run the FULL window extent so they meet the head/sill/jambs instead of
+    # stopping at the inner opening (they used to end at iH/iW, leaving the gap at the frame top).
+    glaze_depth = depth
 
     items = []
     # Outer lining frame — the single hollow profile, full depth.
@@ -115,25 +106,28 @@ def build_window_items(f, width, height, depth, *, frame_thk, glaze_thk, bar_thk
     iH = height - 2 * frame_thk    # inner glazed-opening height
 
     if split == "V":
-        # Vertical mullion centred in the opening; left + right panes.
-        items.append((_extrude_along(f, _rect(f, bar_thk, iH),
+        # Vertical mullion spanning the full height (meets head + sill); left + right panes.
+        items.append((_extrude_along(f, _rect(f, bar_thk, height),
                                      center, depth_dir, width_dir, depth), "bar"))
         pane_w = (iW - bar_thk) / 2.0
         off = bar_thk / 2.0 + pane_w / 2.0
         for cx in (-off, off):
-            items.append((_pane(pane_w, iH, cx=cx), "pane"))
+            items.append((_extrude_along(f, _rect(f, pane_w, iH, cx=cx),
+                                        center, depth_dir, width_dir, glaze_depth), "pane"))
 
     elif split == "H":
-        # Horizontal transom centred in the opening; top + bottom panes.
-        items.append((_extrude_along(f, _rect(f, iW, bar_thk),
+        # Horizontal transom spanning the full width (meets both jambs); top + bottom panes.
+        items.append((_extrude_along(f, _rect(f, width, bar_thk),
                                      center, depth_dir, width_dir, depth), "bar"))
         pane_h = (iH - bar_thk) / 2.0
         off = bar_thk / 2.0 + pane_h / 2.0
         for cy in (off, -off):
-            items.append((_pane(iW, pane_h, cy=cy), "pane"))
+            items.append((_extrude_along(f, _rect(f, iW, pane_h, cy=cy),
+                                        center, depth_dir, width_dir, glaze_depth), "pane"))
 
     else:
-        # Single centred pane.
-        items.append((_pane(iW, iH), "pane"))
+        # Single pane filling the opening.
+        items.append((_extrude_along(f, _rect(f, iW, iH),
+                                     center, depth_dir, width_dir, glaze_depth), "pane"))
 
     return items

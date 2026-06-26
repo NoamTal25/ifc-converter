@@ -312,7 +312,9 @@ doors rebuilt** across the 4 ADUs (2/1/3/5), `verify()` ALL CHECKS PASSED, **0 n
 0.0 mm face-bbox drift, identity/placement/FootPrint preserved, idempotent. Tester
 (`test_door_converter_v2.py`) **4/4 fixtures, 276 checks, teeth-verified** — incl. a **layer G** that
 pins the rebuilt FormX-type multiset (forcing every door to one type FAILS it, where it slipped the
-count-only checks). **Open:** FormX-architecture
+count-only checks). **Open:** **the Gaudi pane↔frame "space" issue (§6 ⚠️) — systemic across windows
+AND doors, being solved in a dedicated session; the same lining/panel-property hypothesis + fix applies
+here (`schema_adapter.py` IfcDoorLiningProperties/IfcDoorPanelProperties)**; FormX-architecture
 viewer review of the 16 goldens + `-D2` outputs (the agreed ground truth); refine the first-pass
 simplifications (flat bifold/combo panels, barn 1-vs-2-leaf, recessed pocket pull — see algorithm §4);
 HandFlipped/FacingFlipped derivation; adjacency-merge; pipeline orchestrator.
@@ -354,9 +356,20 @@ recipe) → inject measured params → swap the Body**.
 
 Result: `verify()` ALL CHECKS PASSED on all 4 ADUs — rebuilt **6/5/4/8** (LEXFORD trapezoid,
 SAN_JUAN skylight, Sunflower bodiless gated), **0 new validate errors**, idempotent. Tester
-(`test_window_converter_v2.py`) **4/4 fixtures, 394 checks, teeth-verified**. **Open:** user viewer
-review of the goldens + `-WIN2` outputs (the agreed ground truth); skylight/trapezoid templates;
-HandFlipped/FacingFlipped derivation; adjacency-merge; pipeline orchestrator.
+(`test_window_converter_v2.py`) **4/4 fixtures, 394 checks, teeth-verified**.
+
+**Glazing-seating iterations (2026-06-26, `golden_geometry.build_window_items`):** viewer review
+found a "space"/well between frame and glass in **Gaudi**. (1) glass was a thin 20 mm pane recessed
+mid-depth in the open hollow lining tube → filled it to ~full depth; (2) then made the glass
+**exactly fill the opening, flush** (0 mm recess, verified) and the **mullion full-height** (was
+ending at the inner opening → gap at the head). Mullion gap fixed. **BUT the uniform pane↔frame
+space persists in Gaudi even at 0 mm geometric recess → it's Gaudi-side/semantic, not our mesh —
+see §6 ⚠️ OPEN.** Checkpoint commit `1e66655` = the lapped+recessed variant; current (uncommitted)
+= flush + full-height mullion.
+
+**Open:** **the Gaudi pane-space issue (§6 ⚠️, dedicated session)**; user viewer review of goldens
++ `-WIN2`; skylight/trapezoid templates; HandFlipped/FacingFlipped derivation; adjacency-merge;
+pipeline orchestrator.
 
 ---
 
@@ -364,6 +377,21 @@ HandFlipped/FacingFlipped derivation; adjacency-merge; pipeline orchestrator.
 
 Hard-won, generalizable lessons (window converter was where they surfaced):
 
+- **⚠️ OPEN (2026-06-26): Gaudi (FormX's viewer) shows a UNIFORM "space" between pane and frame on
+  EVERY window AND door — likely semantic, not mesh-driven.** With window v2 glass authored to
+  *exactly* fill the opening **flush** (verified **0.0 mm** geometric recess, panes meeting
+  lining/mullion), Gaudi *still* renders a uniform gap around every pane, and the (now full-height)
+  mullion appears to stop at that gap. Blender + openIFC render it correctly (no gap). The user
+  reports it across *all* windows/doors ("standard issue in Gaudi across everything with a window
+  pane"). → The gap is almost certainly **Gaudi drawing its own frame + inset pane from the
+  property sets** (`IfcWindowLiningProperties.LiningThickness` / `IfcWindowPanelProperties` /
+  `IfcDoorLiningProperties` / `IfcDoorPanelProperties` — `FrameThickness`, `LiningThickness`,
+  mullion/panel offsets), or a Gaudi display convention — **not** our Body mesh. Two changes (5 mm
+  recess → 0, lapped → flush) did NOT move it, confirming it's not our geometry. **To resolve
+  (dedicated session):** get a Gaudi-NATIVE correct window/door IFC and *diff* its property
+  sets/representation against our output; test removing/zeroing/realigning the lining+panel props
+  in `schema_adapter.py` (both converters) and re-check in Gaudi; first confirm whether the gap also
+  appears on Gaudi-native (non-converted) windows (→ convention) or only ours (→ our params).
 - **Units vary (feet / mm / m) — never assume.** Read `ifcopenshell.util.unit.calculate_unit_scale`
   per file and author in file units. (Real ADUs are in **feet**, scale 0.3048.)
 - **The geom kernel returns vertices in METRES regardless of file units** — divide by unit scale
