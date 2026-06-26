@@ -181,11 +181,12 @@ root; superseded/reference material lives under `reference/`. See `README.md` fo
 ```
 ifc-converter/
 ├── IFC Window Converter v2/     ACTIVE — window converter (golden-template-swap, go-forward §2a)
+├── IFC Door Converter v2/       ACTIVE — door converter (golden-template-swap, go-forward §2a)
 ├── INPUT_IFC_FILES_HERE/        batch input + tester fixture corpus
 ├── OUTPUT_IFC_FILES_HERE/       converter outputs (gitignored)
 └── reference/
     ├── IFC Window Converter v1/        superseded by v2 (measure-and-rebuild)
-    ├── IFC Door Converter v1/          door v2.1 (measure-and-rebuild) — pending a golden-template v2
+    ├── IFC Door Converter v1/          door v2.1 (measure-and-rebuild) — superseded by door v2
     ├── Gal_Similar_Project_Refrences/  Gal's 3 production tools (design template)
     └── Old Context/                    research archive + golden-spec prototype (§8)
 ```
@@ -199,19 +200,19 @@ ifc-converter/
 | `reference/IFC Door Converter v1/IFC door converter algorithm.md` | Door v1 living spec (mirrors the window algorithm doc); Step 2 holds the comprehensive door taxonomy. | Reference |
 | `reference/IFC Door Converter v1/test_door_converter.py` + `DOOR_CONVERTER_TESTING_AGENT.md` | Door v1 **automated manipulability tester** + its subagent spec. Mirrors the window tester: runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently, manipulates each rebuilt door (resize/move/rotate), kernel-free, teeth + pinned `BASELINE_REBUILT`. Run `python3.11 "reference/IFC Door Converter v1/test_door_converter.py"`. | Reference; 4/4 pass; teeth verified |
 | `IFC Window Converter v2/` | **The golden-template-swap window converter (the go-forward §2a method, built 2026-06-25).** Classify→author golden→inject params→swap. Modules: `generate_goldens.py`→`golden_templates/*.ifc` (7 reviewable FormX golden templates), `golden_geometry.py` (the SHARED parametric recipe used by both the goldens and the converter — so output == golden, scaled), `classify_window.py` (Name→recipe, PDF taxonomy), `schema_adapter.py` (the per-IFC2X3/4/4X3 quirk locus), `IFC_window_converter_V2.py` (main, suffix `-WIN2`, swaps Body only, preserves FootPrint, authors `Pset_WindowCommon` + lining/panel props at the **occurrence** level — no 2nd `IfcWindowType`), `test_window_converter_v2.py` + `WINDOW_CONVERTER_V2_TESTING_AGENT.md`, `IFC window converter v2 algorithm.md`. **Self-contained.** | Built; `verify()` ALL PASS on all 4 ADUs (rebuilt 6/5/4/8; trapezoid+skylight+bodiless gated), 0 new validate errors, tester 4/4 (394 checks) teeth-verified. **Awaiting user viewer review of goldens + outputs.** |
+| `IFC Door Converter v2/` | **The golden-template-swap DOOR converter (go-forward §2a, built 2026-06-26).** Mirrors window v2 module-for-module. Modules: `door_types.py` (the **single source of truth** — 16 FormX door types; both the generator and classifier import it, so the catalog is edited in one place), `generate_goldens.py`→`golden_templates/*.ifc` (**16** reviewable goldens), `golden_door_geometry.py` (the SHARED recipe — `build_door_items` + `dims_in_units(scale)` so output == golden scaled, scale-correct in mm/ft), `classify_door.py` (Name→type per the PDF rules, tuned to real names), `schema_adapter.py` (IfcDoorType/IfcDoorStyle + styles + occurrence psets — never a 2nd type), `IFC_door_converter_V2.py` (main, suffix `-D2`, swaps Body only, preserves FootPrint + real Revit handedness, harvests the baked door's own colours, **folding-depth clamp**, authors `Pset_DoorCommon` + `FormX_Door_Window` + lining/panel props at the **occurrence** level), `test_door_converter_v2.py` (7 layers incl. a classification-multiset teeth layer) + `DOOR_CONVERTER_V2_TESTING_AGENT.md`, `IFC door converter v2 algorithm.md`. **Self-contained.** | Built; goldens 16/16 validate clean; `verify()` ALL PASS on all 4 ADUs (all 11 doors rebuilt 2/1/3/5), 0 new validate errors, tester 4/4 (276 checks) teeth-verified. **Awaiting FormX-architecture viewer review of goldens + outputs.** |
 | `reference/Gal_Similar_Project_Refrences/` | Gal's three production tools (walls cleanup / levels organizer / floors definer) + their algorithm.md & testing docs. The **design template** (CLI shape, built-in `verify()`, "only-touch-your-element" discipline, testing methodology). *(moved under `reference/` 2026-06-26)* | Reference |
 | `INPUT_IFC_FILES_HERE/` | Real FormX ADUs — the converter's batch input **and** the tester's fixture corpus: `LEXFORD_OFFICE-C1` (IFC2X3), `SAN_JUAN_CYPRESS…-W1-L1` (IFC4X3, already through walls+levels), `Sunflower_A` (IFC2X3), `Turnberry…-C1` (IFC4). | Active |
-| `OUTPUT_IFC_FILES_HERE/` | Converter outputs (`-WIN1`/`-WIN2`/`-D1` etc.), gitignored. | — |
+| `OUTPUT_IFC_FILES_HERE/` | Converter outputs (`-WIN1`/`-WIN2`/`-D1`/`-D2` etc.), gitignored. | — |
 | `reference/Old Context/` | Pre-converter research + the golden-spec prototype (12 authored golden window IFCs + `author_goldens.py` + style taxonomy). **Now the prototype reference for the golden-template-swap pivot** — see §8. *(moved under `reference/` 2026-06-26; §8 path mentions of `Old Context/` now resolve to `reference/Old Context/`.)* | Reference (promoted 2026-06-25) |
 
 ---
 
-## 5. Door converter — built (v1)
+## 5. Door converter — v1 (measure-and-rebuild, reference)
 
-> **Now `reference/IFC Door Converter v1/` (moved 2026-06-26).** This is the **measure-and-rebuild
-> v1** door converter; a golden-template **v2** (the go-forward §2a method, like window v2) is the
-> next door work. Kept as working reference. Run from the new path:
-> `python3.11 "reference/IFC Door Converter v1/test_door_converter.py"`.
+> **SUPERSEDED by door v2 (§5b, golden-template-swap, built 2026-06-26).** This `reference/IFC Door
+> Converter v1/` section documents the **measure-and-rebuild v1** door converter, kept as working
+> reference. Run from its path: `python3.11 "reference/IFC Door Converter v1/test_door_converter.py"`.
 
 Confirmed by the grounding scan: **11 `IfcDoor` across the 4 ADUs** (no `IfcDoorStandardCase`),
 all in feet, schemas IFC2X3/IFC4/IFC4X3. Each door **fills an `IfcOpeningElement`** voided into a
@@ -263,6 +264,58 @@ tester (`test_door_converter.py`, 4/4 fixtures, teeth-verified, single hollow li
 panes/handle fills) + testing-agent doc are shipped. **Open next:** new modules for untested classes (revolving
 = radial, boom/turnstile = bar, trapdoor = horizontal, swing+fixed = unequal split); the deferred
 pset golden-spec; a unified pipeline orchestrator per §3.
+
+---
+
+## 5b. Door converter v2 — built (golden-template-swap, 2026-06-26)
+
+The second converter under the **go-forward §2a method** (door v1 kept as reference), built fresh to
+mirror window v2 (§5a) module-for-module. `IFC Door Converter v2/`. Pipeline: **classify (Name) →
+author the FormX golden via the shared recipe → inject measured dims + harvested colours → swap the
+Body**.
+
+- **FormX taxonomy = the PDF DOORS section** — **16 door types**, defined once in **`door_types.py`**
+  (the single source of truth both `generate_goldens.py` and `classify_door.py` import — so "come
+  back and update the doors later" = edit one table + re-run). Geometry archetypes: single-swing,
+  double-swing, sliding, pocket, barn (track + rollers), shower (glazed), bifold (multi-panel),
+  slide/swing combos, and DOOR_OPENING (cased opening, lining only).
+- **Shared recipe `golden_door_geometry.py`** authors BOTH the 16 goldens and the converted doors →
+  output == golden, scaled. Lining = `IfcRectangleHollowProfileDef` (`WallThickness` = drivable
+  border); panels/mullions/rails/track/rollers/handles = `IfcRectangleProfileDef`. **Scale-correct:**
+  all linear dims come from `dims_in_units(scale)` (canonical mm `CANON` → file units) — NO hard-coded
+  mm in the build path; clamps keep features valid on narrow/odd doors. *(Both bugs the §7-trigger
+  review caught — mm-globals-at-feet-scale would've made 32-ft handles; loose clamps gave negative
+  panes on small subdivided doors — are fixed here.)*
+- **Classification (`classify_door.py`)** = PDF `IfcRoot.Name` rules in priority order, tuned to the
+  real names (OPENING · POCKET · BARN±SINGLE · bifold incl. real `four_fold` · SLIDING+PLY+GEM ·
+  SINGLE+FLUSH · INTERIOR+DOUBLE · INTERIOR+SINGLE · DOUBLE+EXTERIOR · SHOWER · SLIDE+SWING · SLIDING ·
+  → default SINGLE). Glazed from type default OR name "glass". **Deferred:** the side-by-side adjacency
+  rule (→ DOOR_BIFOLDING_SWING_COMBO) — no such pair in the ADUs.
+- **Faithful to the baked door:** measured W·H·D + harvested surface styles (the converted door
+  "takes on the baked door's colours/dimensions", per the user). **Folding-depth clamp** (`MAX_FOLD_DEPTH_M`)
+  for bi-fold/combo (the four-fold exports partly folded → bbox depth lies). Canonical handles authored
+  (lever/pull); hardware is geometry, not a FormX param.
+- **Preserve real handedness:** the occurrence `OperationType` keeps a meaningful Revit value
+  (`SINGLE_SWING_RIGHT`, `…OPPOSITE_RIGHT`, …); the class-canonical op only fills a `NOTDEFINED` gap —
+  so the occurrence never contradicts its preserved `IfcDoorType`. **Classifier hardened** against
+  substring footguns (`opening` gated by leaf keywords; glazing descriptors like "double glazed"
+  scrubbed before leaf-count rules). All-glass donor → synthesize opaque so the frame isn't see-through.
+- **Occurrence-level apparatus, never a 2nd `IfcDoorType`** (§6): `Pset_DoorCommon` (Overall/Rough
+  W·H, Depth) + `FormX_Door_Window` (HandFlipped/FacingFlipped) + `IfcDoorLiningProperties` + per-panel
+  `IfcDoorPanelProperties`. **Swaps Body only** (match by `.id()`), preserves FootPrint/identity/
+  relationships. Suffix `-D2`; marker `"FormX-D2 parametric door"`.
+- **Per-schema quirks in `schema_adapter.py`** (IfcDoorType IFC4/4X3 vs IfcDoorStyle IFC2X3, style
+  wrapping, semantics availability). USERDEFINED + `UserDefinedOperationType` for the slide/swing combos.
+
+Result: goldens 16/16 author clean (**0 validate errors each**, full param set). Converter: **all 11
+doors rebuilt** across the 4 ADUs (2/1/3/5), `verify()` ALL CHECKS PASSED, **0 new validate errors**,
+0.0 mm face-bbox drift, identity/placement/FootPrint preserved, idempotent. Tester
+(`test_door_converter_v2.py`) **4/4 fixtures, 276 checks, teeth-verified** — incl. a **layer G** that
+pins the rebuilt FormX-type multiset (forcing every door to one type FAILS it, where it slipped the
+count-only checks). **Open:** FormX-architecture
+viewer review of the 16 goldens + `-D2` outputs (the agreed ground truth); refine the first-pass
+simplifications (flat bifold/combo panels, barn 1-vs-2-leaf, recessed pocket pull — see algorithm §4);
+HandFlipped/FacingFlipped derivation; adjacency-merge; pipeline orchestrator.
 
 ---
 
@@ -386,6 +439,9 @@ Hard-won, generalizable lessons (window converter was where they surfaced):
 | **Window v2: golden geometry = a SHARED code recipe (not runtime entity-transplant from the .ifc)** | The 7 golden `.ifc`s are the reviewable contract; `golden_geometry.py` authors them AND the converted instances, so output == golden scaled. Robust across IFC2X3/4/4X3 + feet/mm (cross-schema entity transplant is brittle). Modular, with `schema_adapter.py` as the per-IFC-type locus. (User steer: "proceed with what works, but modular + keep per-IFC-type divergence in mind.") | **Active (set 2026-06-25)** |
 | **Window v2: author FormX params at OCCURRENCE level, never a 2nd `IfcWindowType`** | Revit windows are already typed; `IfcRelDefinesByType` is `[0:1]`. `Pset_WindowCommon` + lining/panel props attach via `IfcRelDefinesByProperties` (many-per-element). The PDF contract is the Pset + Name, not a type entity. | **Active (set 2026-06-25)** |
 | **Window v2 edge dispositions: skylight + trapezoid + bodiless → gate; no-keyword → FIXED** | Skylight/trapezoid aren't FormX parametric types yet (PDF); bodiless `GeometricSet` has no readable solid → preserve+flag, don't corrupt. FIXED is the safe default panel. | **Active (set 2026-06-25)** |
+| **Door v2: built mirroring window v2, with `door_types.py` as the single source of truth** | Both `generate_goldens.py` + `classify_door.py` import one 16-type table → the catalog is edited in one place ("come back and update the doors later"). Same shared-recipe / occurrence-Pset / Body-swap / verify+teeth backbone. | **Active (set 2026-06-26)** |
+| **Door v2: recipe is scale-correct via `dims_in_units(scale)` (no mm in the build path)** | The shared recipe is driven by the converter at feet scale; hard-coded mm constants would've authored 32-ft handles + loose clamps gave negative panes on narrow subdivided doors (both caught by the adversarial golden review). All linear dims flow from a canonical mm table converted to file units. | **Active (set 2026-06-26)** |
+| **Door v2: author all 16 PDF types as goldens + model canonical handles; clean-&-simplified first pass** | User decisions (2026-06-26): one golden per type (parity); handles authored (door v1 viewer regression was missing handles) though not a FormX param; bifold/combo flat, barn = track+rollers, pocket pull proud, DOOR_OPENING = cased opening — all flagged for the FormX-architecture viewer review to refine. | **Active (set 2026-06-26)** |
 | **Match the proven recipe (clean geometry + Name + PredefinedType + relations), NOT rich type/Pset apparatus** | Gal's production tools author zero Psets/element-types; the richer "golden-spec" was Claude-authored, unverified against FormX, and v1 worked without it. Lower risk, more likely to drop into FormX. | **Superseded by the 2026-06-25 pivot** (was the v1 stance) |
 | **Converters are self-contained (ifcopenshell only)** | Removed the window converter's imports of the old `classify.py`/`bakedness.py` (now archived). They were used only for a cosmetic Name + an informational log number — both inlined. New converters should follow suit: no dependency on `Old Context/`. | **Active (set 2026-06-23)** |
 | **Rebuild from the element's OWN measured local bbox; preserve GlobalId + placement in place** | Orientation-agnostic; keeps the element in its opening; only the element's representation/Name/PredefinedType change → the opening/fill/void/containment chain stays valid. | Active |
