@@ -4,16 +4,25 @@
 building elements into clean, **parametric, manipulable** geometry for FormX — *one converter
 per element type*, designed to compose into a single "fix any building IFC" pipeline. The
 **window converter is the proven reference implementation**; the **door converter is the second**
-(`IFC Door Converter/`, converter v1 built). This file is the generalized playbook **and** the
+(`IFC Door Converter/`, converter v2.1 built). This file is the generalized playbook **and** the
 project memory.
 
 **Status.** Window converter v1: built, **self-contained** (depends on ifcopenshell only),
 validated on every real ADU (IFC2X3 / IFC4 / IFC4X3), shipped with an automated manipulability
-tester (teeth-verified). Door converter v1: **built + self-contained**, algorithm spec written,
+tester (teeth-verified). Door converter v2.1: **built + self-contained**, algorithm spec written,
 validated on every real ADU (all 11 doors rebuilt across IFC2X3 / IFC4 / IFC4X3, `verify()` ALL
 CHECKS PASSED, no new validate errors), shipped with an automated manipulability tester
 (4/4 fixtures, 272 checks, teeth-verified). Gal's three sibling tools (walls/levels/floors) are
 the original design template — see §4.
+
+**⚠️ Direction pivot (2026-06-25) — READ §1/§2/§7 before building.** The project is moving to a
+**golden-template-swap** methodology, **project-wide**: instead of measuring a baked element and
+rebuilding a neutral parametric template in code, the converter **classifies** each element into one
+of **FormX's defined types**, loads that type's **golden template IFC**, **injects the instance's
+parameters** (dimensions, …), and **swaps it in**. The existing **window v1** and **door v2.1**
+converters are the **prior measure-and-rebuild approach** — kept as **reference, not deleted** (they
+approximate rather than matching FormX's catalog). The next window converter is built **fresh**
+under this new method (separate chat).
 
 **Environment.** ifcopenshell 0.8.5 under **`python3.11`** — run *everything* with `python3.11`.
 Plain `python3` does NOT have ifcopenshell on this machine.
@@ -47,17 +56,58 @@ bakes that into **frozen geometry** — the recipe is lost; only the shape (and 
 survives. "Make it wider" has nothing to grab. **Each converter undoes this for one element
 type**, rebuilding baked geometry into clean parametric form. No off-the-shelf tool does this.
 
-**Core strategy — promote/measure-and-rebuild, never reverse-engineer a mesh.** We don't try to
-infer parameters out of a triangle soup. We measure the element's real extents, then author clean
-parametric geometry that occupies the same space — preserving identity and relationships.
+**Go-forward strategy (project-wide, set 2026-06-25) — classify → instantiate FormX's golden
+template → inject params.** FormX maintains a defined catalog of element types (windows first), each
+with a **golden template IFC** that is already clean + parametric. The converter, per element:
+**(1)** classifies the baked element into one of those FormX types by its **naming standard**;
+**(2)** loads that type's **golden template IFC**; **(3)** injects the instance's specific parameters
+(dimensions — possibly more); **(4)** **swaps** the baked element for the parameterized template,
+preserving `GlobalId` / `ObjectPlacement` / relationships. Geometry now comes from **FormX's
+templates**, not from code-authored shapes — so the output *matches FormX's catalog* instead of
+approximating it. Classification is now **structural** (it picks the template), not cosmetic.
 
-**Open question (unconfirmed with CTO):** does FormX only get post-export IFC, or could it read
-source `.rvt`? Direct `.rvt` parameter extraction would bypass the baking problem entirely. Treat
-as a blocking scoping question, not a settled assumption.
+**v1 strategy (window v1 / door v2.1 — reference) — promote/measure-and-rebuild, never reverse-
+engineer a mesh.** Measure the element's real extents, then author a clean neutral parametric
+template *in code* that occupies the same space. Same *promote-not-reconstruct* spirit; what changes
+go-forward is the **geometry source** (FormX golden templates vs. code-authored). Kept as reference —
+its preserve-identity / copy-in-place / styles / verify+teeth machinery carries straight over.
+
+**Open question — partially resolved (2026-06-25):** the team has now informed the design — FormX
+*does* have an element-type taxonomy + golden template IFCs the converter instantiates (this fired
+the §7 golden-spec promotion trigger). Still open: whether FormX could read source `.rvt` directly
+(would bypass the baking problem entirely) — treat as a scoping question, not a settled assumption.
 
 ---
 
-## 2. THE CONVERTER RECIPE — the generalized process every converter follows
+## 2. THE CONVERTER RECIPE
+
+> **Two recipes now.** §2a is the **go-forward golden-template-swap** recipe (project-wide, the new
+> method). §2b is the **v1 measure-and-rebuild** recipe (window v1 / door v2.1 — reference). Both
+> share the same preserve-identity / copy-in-place / verify+teeth backbone; they differ in where the
+> geometry comes from.
+
+### 2a. Go-forward recipe — classify → instantiate golden template → inject params
+
+For each element of your type, in a copied model:
+1. **Classify** the baked element into one of **FormX's defined types** by its naming standard
+   (this is now *structural* — it selects the template; a wrong class = wrong geometry).
+2. **Load that type's golden template IFC** (FormX-provided; already clean + parametric).
+3. **Inject the instance's parameters** — dimensions (from the baked element's measured extents),
+   and whatever else the template exposes — into the template.
+4. **Swap** the baked element's representation for the parameterized template, **preserving
+   `GlobalId` / `ObjectPlacement` / the opening→fill→void→host chain / spatial containment** (§2b
+   points 1, 6 carry over verbatim) + surface styles, canonical Name + `PredefinedType`, idempotency
+   marker.
+5. **Gate** elements that don't classify / can't be templated — leave untouched + flag (point 9).
+6. **Ship `verify()` + a teeth'd tester + a testing-agent `.md`** (point 10), adapted to assert the
+   element now matches its golden template.
+
+*(Open design qs for the new window converter, to settle in its own chat: where template IFCs live;
+the exact naming-standard → type map; full param set beyond dimensions; how a template is
+instantiated — geom copy + scale vs. parametric fill. The archived goldens in §8 are the starting
+reference.)*
+
+### 2b. v1 recipe — measure-and-rebuild (reference)
 
 This is the distilled pattern, proven by the window converter + Gal's three production tools.
 A converter for any element type does this and **nothing more** (the only per-element part is the
@@ -94,7 +144,11 @@ The window converter is the canonical implementation of all ten; read it before 
 
 ## 3. Building the next converter (step-by-step)
 
-The next element is **the Door** (`IFC Door Converter/`). General procedure for any component:
+> **Reference (v1 measure-and-rebuild procedure).** This was the playbook for the window/door
+> converters. Go-forward converters follow the **§2a golden-template-swap** recipe instead; the
+> scanning/mapping (steps 1, 3) + I/O + verify/test discipline still apply.
+
+General procedure for any component:
 
 1. **Scan the real inputs** for your element type, its geometry forms (mapped? brep? swept?), and
    its relationships. A tiny `by_type` script over `INPUT_IFC_FILES_HERE/*.ifc` (use schema-safe
@@ -128,10 +182,11 @@ plan file (not yet in-repo).
 | `IFC Door Converter/IFC_door_converter_V1.py` | **The door converter (v2.1, modular).** `_classify`→`_rebuild_plan` makes a recipe `{panels, arrangement, folding, hardware}`; `_assemble` composes a parts library (inline lining/pane/divider builders + `_build_handles`/`_door_depth`) into a **single frame layer** — outer lining + panes + dividers — plus a canonical **handle**, per class (French→lining+2 panes+mullion+2 levers, four-fold→4 panes+3 mullions, single-flush→lining+slab+lever, sliding→flush-pull, overhead→stacked+no handle). **Glazed doors measure their member layout 1-1** (border + pane widths + mullion from the transparent sub-solids, `_measure_layout`); opaque fall back to even-tiling. Panel count from the real `OperationType` enum (Name fallback); folding-depth clamp. Faithful (overall dims + glazed layout + colors/props measured/preserved) not pixel-identical. **Swaps only the Body, leaves `FootPrint` untouched** (match by `.id()`); gates non-rectangular + unreadable. **Self-contained.** Batch INPUT→OUTPUT `-D1`. | Built; all 4 fixtures (11 doors) pass `verify()` |
 | `IFC Door Converter/IFC door converter algorithm.md` | Living spec (mirrors the window algorithm doc); Step 2 holds the comprehensive door taxonomy. | Current |
 | `IFC Door Converter/test_door_converter.py` + `DOOR_CONVERTER_TESTING_AGENT.md` | **Automated manipulability tester** + its subagent spec. Mirrors the window tester: runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently (does NOT call `verify()`), and **manipulates each rebuilt door** (resize/move/rotate) — outer lining = the hollow profile (single frame layer; panes/dividers/handles are rect fills), ≥1 inset pane, every part contained + styled; drift on the **face plane** (proud handle/depth-clamp ignored); FootPrint preserved. **Kernel-free** (analytic bbox). Teeth: baked originals MUST fail + pinned `BASELINE_REBUILT`. Run `python3.11 test_door_converter.py`. | 4/4 fixtures pass; teeth verified |
+| `IFC Window Converter v2/` | **The golden-template-swap window converter (the go-forward §2a method, built 2026-06-25).** Classify→author golden→inject params→swap. Modules: `generate_goldens.py`→`golden_templates/*.ifc` (7 reviewable FormX golden templates), `golden_geometry.py` (the SHARED parametric recipe used by both the goldens and the converter — so output == golden, scaled), `classify_window.py` (Name→recipe, PDF taxonomy), `schema_adapter.py` (the per-IFC2X3/4/4X3 quirk locus), `IFC_window_converter_V2.py` (main, suffix `-WIN2`, swaps Body only, preserves FootPrint, authors `Pset_WindowCommon` + lining/panel props at the **occurrence** level — no 2nd `IfcWindowType`), `test_window_converter_v2.py` + `WINDOW_CONVERTER_V2_TESTING_AGENT.md`, `IFC window converter v2 algorithm.md`. **Self-contained.** | Built; `verify()` ALL PASS on all 4 ADUs (rebuilt 6/5/4/8; trapezoid+skylight+bodiless gated), 0 new validate errors, tester 4/4 (394 checks) teeth-verified. **Awaiting user viewer review of goldens + outputs.** |
 | `Gal_Similar_Project_Refrences/` | Gal's three production tools (walls cleanup / levels organizer / floors definer) + their algorithm.md & testing docs. The **design template** (CLI shape, built-in `verify()`, "only-touch-your-element" discipline, testing methodology). | Reference |
 | `INPUT_IFC_FILES_HERE/` | Real FormX ADUs — the converter's batch input **and** the tester's fixture corpus: `LEXFORD_OFFICE-C1` (IFC2X3), `SAN_JUAN_CYPRESS…-W1-L1` (IFC4X3, already through walls+levels), `Sunflower_A` (IFC2X3), `Turnberry…-C1` (IFC4). | Active |
-| `OUTPUT_IFC_FILES_HERE/` | Converter outputs (`-WIN1` etc.), gitignored. | — |
-| `Old Context/` | Pre-converter research + the deferred golden-spec. **Not needed to build new converters** — see §8. | Archived |
+| `OUTPUT_IFC_FILES_HERE/` | Converter outputs (`-WIN1`/`-WIN2`/`-D1` etc.), gitignored. | — |
+| `Old Context/` | Pre-converter research + the golden-spec prototype (12 authored golden window IFCs + `author_goldens.py` + style taxonomy). **Now the prototype reference for the golden-template-swap pivot** — see §8. | Reference (promoted 2026-06-25) |
 
 ---
 
@@ -190,6 +245,47 @@ pset golden-spec; a unified pipeline orchestrator per §3.
 
 ---
 
+## 5a. Window converter v2 — built (golden-template-swap, 2026-06-25)
+
+The first converter built under the **go-forward §2a method** (window v1 is kept as reference).
+`IFC Window Converter v2/`. Pipeline: **classify (Name) → author the FormX golden template (shared
+recipe) → inject measured params → swap the Body**.
+
+- **FormX taxonomy = the PDF** (*IFC Standardizer: Template Gallery categorizing*):
+  `SINGLE_PANEL_WINDOW` × {FIXED, CASEMENT, AWNING, SLIDER, DOUBLE_HUNG} +
+  `DOUBLE_HORIZONTAL_WINDOW` (vertical mullion, L/R) + `DOUBLE_VERTICAL_WINDOW` (horizontal transom,
+  T/B) + `TRAPEZOID_WINDOW` (gated, no template yet). Classification is **name-keyword** driven and
+  *structural* (it picks the golden → the geometry).
+- **Grounding reality vs the PDF:** no opening hosts >1 window in any ADU → the PDF's "merge two
+  adjacent windows into a DOUBLE" never fires; the DOUBLE windows are *single* `IfcWindow`s named
+  `…-Double` → name-driven, adjacency-merge **deferred**. `DOUBLE_HUNG` is a SINGLE panel subtype
+  (stacked sashes, horizontal transom), not a compound window. Skylight + trapezoid + bodiless
+  `GeometricSet` → **gated** (preserved, flagged). No-operation-keyword → default **FIXED**.
+- **Shared geometry recipe (`golden_geometry.py`)** is used by BOTH `generate_goldens.py` (writes
+  the 7 reviewable `golden_templates/*.ifc`) and the converter → a converted window is *provably
+  identical to its golden, scaled*. Lining = `IfcRectangleHollowProfileDef` (`WallThickness` = the
+  drivable frame border); panes/bars = `IfcRectangleProfileDef`; extruded along the measured depth
+  axis. Same axis-role rule as the door converter (thinnest = depth; more-vertical face axis = height).
+- **No second `IfcWindowType`.** These windows are already Revit-typed and `IfcRelDefinesByType` is
+  `[0:1]` — minting a new type was the one bug found (a duplicate type per window failed `validate`
+  in IFC4/4X3 only). Fix: author `Pset_WindowCommon` + `IfcWindowLiningProperties` +
+  `IfcWindowPanelProperties` at the **occurrence** level via `IfcRelDefinesByProperties`
+  (many-per-element). `Pset_WindowCommon` carries the PDF param contract (Overall/Rough W·H, Depth,
+  PanelType(s), Split, HandFlipped/FacingFlipped=False default).
+- **Per-schema quirks are centralized in `schema_adapter.py`** (the flagged locus, per the user's
+  "modular + could have a divergent procedure per IFC type" steer): style wrapping, PredefinedType
+  availability, `IfcWindowType` vs `IfcWindowStyle`. Every author helper degrades (skip+log).
+- **Swaps the Body only** (match by `.id()`, §6), preserves `FootPrint`/identity/relationships +
+  styles harvested from the baked window. Suffix `-WIN2`; marker `"FormX-WIN2 parametric window"`.
+
+Result: `verify()` ALL CHECKS PASSED on all 4 ADUs — rebuilt **6/5/4/8** (LEXFORD trapezoid,
+SAN_JUAN skylight, Sunflower bodiless gated), **0 new validate errors**, idempotent. Tester
+(`test_window_converter_v2.py`) **4/4 fixtures, 394 checks, teeth-verified**. **Open:** user viewer
+review of the goldens + `-WIN2` outputs (the agreed ground truth); skylight/trapezoid templates;
+HandFlipped/FacingFlipped derivation; adjacency-merge; pipeline orchestrator.
+
+---
+
 ## 6. Findings & gotchas (cross-cutting — apply to EVERY converter)
 
 Hard-won, generalizable lessons (window converter was where they surfaced):
@@ -223,6 +319,13 @@ Hard-won, generalizable lessons (window converter was where they surfaced):
   to stay schema-correct.
 - **`validate` gate = output errors ≤ source errors**, not `== 0`. Real exports carry pre-existing
   `ifcopenshell.validate` errors; the contract is *introduce none*.
+- **An occurrence can have only ONE type (`IfcRelDefinesByType` is `[0:1]` via the `IsTypedBy`
+  inverse).** Revit-exported windows/doors are already typed, so authoring a *new* `IfcWindowType`
+  + a 2nd `IfcRelDefinesByType` is invalid — it failed `validate` in IFC4/4X3 (silently fine in
+  IFC2X3, where the validator doesn't enforce it). Author element-detail property sets
+  (`Pset_*`, `IfcWindowLiningProperties`, `IfcWindowPanelProperties`) at the **occurrence** level
+  via `IfcRelDefinesByProperties` (many-per-element) instead — no type needed, multiplicity-safe.
+  (Cost a debug cycle on window converter v2.)
 - **Schema-absent types:** some types don't exist in older schemas (e.g. `IfcLightFixture` is not in
   IFC2X3). Wrap `by_type` in `try/except RuntimeError`.
 - **Local-frame orientation is solved empirically, not analytically.** Elements are rotated any
@@ -258,20 +361,26 @@ Hard-won, generalizable lessons (window converter was where they surfaced):
 
 | Decision | Rationale | Status |
 |---|---|---|
-| **Match the proven recipe (clean geometry + Name + PredefinedType + relations), NOT rich type/Pset apparatus** | Gal's production tools author zero Psets/element-types; the richer "golden-spec" was Claude-authored, unverified against FormX, and v1 worked without it. Lower risk, more likely to drop into FormX. | Active |
+| **Go-forward: golden-template-swap supersedes measure-and-rebuild (project-wide)** | Team confirmed FormX has an element-type catalog + golden template IFCs. Classify → instantiate FormX's template + inject params *matches* FormX's catalog; code-authored neutral templates only *approximate* it (window v1 / door v2.1 kept as reference, not deleted). New window converter built fresh under this method. | **Active (set 2026-06-25)** |
+| **Window v2: golden geometry = a SHARED code recipe (not runtime entity-transplant from the .ifc)** | The 7 golden `.ifc`s are the reviewable contract; `golden_geometry.py` authors them AND the converted instances, so output == golden scaled. Robust across IFC2X3/4/4X3 + feet/mm (cross-schema entity transplant is brittle). Modular, with `schema_adapter.py` as the per-IFC-type locus. (User steer: "proceed with what works, but modular + keep per-IFC-type divergence in mind.") | **Active (set 2026-06-25)** |
+| **Window v2: author FormX params at OCCURRENCE level, never a 2nd `IfcWindowType`** | Revit windows are already typed; `IfcRelDefinesByType` is `[0:1]`. `Pset_WindowCommon` + lining/panel props attach via `IfcRelDefinesByProperties` (many-per-element). The PDF contract is the Pset + Name, not a type entity. | **Active (set 2026-06-25)** |
+| **Window v2 edge dispositions: skylight + trapezoid + bodiless → gate; no-keyword → FIXED** | Skylight/trapezoid aren't FormX parametric types yet (PDF); bodiless `GeometricSet` has no readable solid → preserve+flag, don't corrupt. FIXED is the safe default panel. | **Active (set 2026-06-25)** |
+| **Match the proven recipe (clean geometry + Name + PredefinedType + relations), NOT rich type/Pset apparatus** | Gal's production tools author zero Psets/element-types; the richer "golden-spec" was Claude-authored, unverified against FormX, and v1 worked without it. Lower risk, more likely to drop into FormX. | **Superseded by the 2026-06-25 pivot** (was the v1 stance) |
 | **Converters are self-contained (ifcopenshell only)** | Removed the window converter's imports of the old `classify.py`/`bakedness.py` (now archived). They were used only for a cosmetic Name + an informational log number — both inlined. New converters should follow suit: no dependency on `Old Context/`. | **Active (set 2026-06-23)** |
 | **Rebuild from the element's OWN measured local bbox; preserve GlobalId + placement in place** | Orientation-agnostic; keeps the element in its opening; only the element's representation/Name/PredefinedType change → the opening/fill/void/containment chain stays valid. | Active |
 | **Carry surface styles forward; gate edge shapes (preserve, don't flatten)** | New items render gray without styles; the rectangular template would corrupt odd shapes. | Active |
 | **I/O: batch `INPUT/` → `OUTPUT/`, per-stage suffix, single-file args; target schema = whatever the input is** | Honors the repo folders + Gal's CLI shape; suffixes compose; real ADUs vary by schema (IFC2X3/IFC4/IFC4X3). | Active |
 | **Done = "open + look right" (human) + structural `verify()` + automated tester with teeth** | No FormX-side acceptance spec exists; layered internal checks + a negative control are the gate, the viewer check is ground truth. | Active |
-| **Golden-spec richness (IfcWindowType + lining/panel/operation enums + Pset + per-style topology) deferred, archived in `Old Context/`** | Value is conditional on FormX consuming operation semantics — unverified, and v1 worked without it. Promote only on trigger (FormX confirms it needs operation/panel semantics, or a viewer test shows mullions matter). | **Deferred** |
+| **Golden-spec richness (IfcWindowType + lining/panel/operation enums + Pset + per-style topology)** | Was deferred/archived pending a trigger: "FormX confirms it needs operation/panel semantics." **Trigger fired 2026-06-25** — team confirmed FormX's window-type catalog + golden templates. The archived goldens (`Old Context/FormX 6.22 IFC Generated/`, §8) are now the prototype reference for the golden-template-swap converter. | **Promoting (trigger fired)** |
 
 ---
 
-## 8. Old Context (archive — NOT needed to build new converters)
+## 8. Old Context (research archive — now the PROTOTYPE REFERENCE for the golden-template pivot)
 
-Everything in `Old Context/` is the research phase that *informed* the window converter but is **not
-a dependency** of it (the converter is self-contained). A new-converter author can ignore all of this.
+Everything in `Old Context/` is the research phase that *informed* the v1 window converter. It was
+"not a dependency / ignorable" under the v1 measure-and-rebuild approach — **but the 2026-06-25
+golden-template pivot makes it directly relevant**: the authored goldens + style taxonomy below are
+the starting reference for the new converter. Read it before building the new window converter.
 
 - **`Old Context/Form X 6.22 IFC Survey/`** — the research survey of real-world IFC files +
   `classify.py` (style classifier), `bakedness.py` (Parametric Integrity Score), `style_registry.csv`
@@ -282,24 +391,31 @@ a dependency** of it (the converter is self-contained). A new-converter author c
   `IfcAdvancedBrep`); the promote-not-reconstruct strategy (dimensions + a style hint usually survive
   even when geometry is baked).
 - **`Old Context/FormX 6.22 IFC Generated/`** — 12 authored "golden target" parametric window IFCs +
-  `author_goldens.py`. This is the **deferred golden-spec** (`IfcWindowType` + lining/panel/operation
-  enums + `Pset_WindowCommon` + per-style mullion topology). Validated in isolation but **more than
-  the working system is shown to need**; parked (see §7 deferred row) with an explicit promotion
-  trigger. The window converter does **not** use it.
+  `author_goldens.py` (`IfcWindowType` + lining/panel/operation enums + `Pset_WindowCommon` +
+  per-style mullion topology). **★ Now the prototype reference** for the golden-template-swap method:
+  these are essentially golden template IFCs + the authoring patterns to instantiate them. The new
+  window converter should study these (and reconcile with FormX's actual catalog/naming standard).
+  `style_registry.csv` (12-style window taxonomy, in `Form X 6.22 IFC Survey/`) is the matching
+  classifier vocabulary to build on.
 - **`Old Context/FormX 6.22 Random Online IFC files/`** — random downloaded IFCs used for the survey.
 
-If FormX later confirms it consumes operation-type/panel semantics, the golden-spec is where that
-work resumes — until then it stays archived.
+Status: the golden-spec promotion trigger **fired 2026-06-25** (see §7) — this is where the new
+golden-template work resumes, reconciled against FormX's confirmed window-type catalog + templates.
 
 ---
 
 ## 9. Glossary
 
-- **The recipe** — the §2 ten-point pattern every converter follows.
-- **Promote vs. reconstruct** — promote: measure surviving geometry/Name and rebuild onto a clean
-  parametric template (what we do). Reconstruct: infer parameters from a raw baked mesh (avoided).
+- **Golden-template-swap (go-forward)** — §2a: classify a baked element into a FormX type, load that
+  type's golden template IFC, inject params, swap it in. The project's go-forward method (2026-06-25).
+- **The recipe (v1)** — the §2b ten-point measure-and-rebuild pattern (window v1 / door v2.1).
+- **Promote vs. reconstruct** — promote: keep surviving identity/geometry/Name and put it onto a
+  clean parametric form (v1: a code-authored template; go-forward: FormX's golden template).
+  Reconstruct: infer parameters from a raw baked mesh (avoided in both).
 - **Stage suffix** — per-converter output tag (`-W1`/`-L1`/`-F1`/`-WIN1`/`-D1`…); they compose along
   the pipeline.
 - **Teeth (negative control)** — a test that must FAIL on a no-op converter, proving the suite can
   detect a non-working converter (the baked originals fail the manipulability check).
-- **Golden-spec / PIS / style_code** — archived research vocabulary; see `Old Context/` (§8).
+- **Golden-spec / golden template** — FormX's clean parametric per-type IFC the converter
+  instantiates (go-forward); prototyped in `Old Context/FormX 6.22 IFC Generated/` (§8). **PIS /
+  style_code** — research vocabulary from the survey; see `Old Context/` (§8).
