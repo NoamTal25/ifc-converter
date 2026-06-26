@@ -7,9 +7,10 @@ Door v2 analog of the window converter's ``golden_geometry.py``. Both
 one module. That guarantees a converted door is *provably identical* to its golden template, only
 scaled to the measured instance dimensions.
 
-Geometry entities (``IfcExtrudedAreaSolid`` / ``IfcRectangleProfileDef`` /
-``IfcRectangleHollowProfileDef`` / placements / points / directions) are stable across
-IFC2X3 / IFC4 / IFC4X3, so this module is schema-agnostic. The schema-*specific* parts
+Geometry entities (``IfcExtrudedAreaSolid`` / ``IfcRectangleProfileDef`` / placements / points /
+directions) are stable across IFC2X3 / IFC4 / IFC4X3, so this module is schema-agnostic. (The lining
+is 4 solid ``IfcRectangleProfileDef`` bars, NOT an ``IfcRectangleHollowProfileDef`` — Gaudi
+mis-renders the hollow profile; §6.) The schema-*specific* parts
 (surface styles, door-type & panel property sets, Pset value types) live in ``schema_adapter.py``.
 
 Coordinate convention (profile 2D plane): **X = width, Y = height**; the solid is extruded
@@ -26,8 +27,10 @@ So a 130 mm lever is 130 mm in the golden and the correct fraction of a foot in 
 never 130 *feet*.
 
 FIRST-PASS SIMPLIFICATIONS (decision #3 — refine after viewer review; tracked in the algorithm doc):
-  * The lining is a full 4-sided hollow rectangle (real door frames are usually 3-sided, no sill);
-    the hollow profile's ``WallThickness`` is the single drivable frame-border parameter.
+  * The lining is a full 4-sided border built from FOUR solid bars (real door frames are usually
+    3-sided, no sill); the bars' width is the drivable frame-border parameter. (Was a single
+    ``IfcRectangleHollowProfileDef`` — switched to 4 solid bars because Gaudi mis-renders the hollow
+    profile, leaving a pane↔frame "space"; CLAUDE.md §6.)
   * Bifold / combo panels are flat & coplanar (NOT articulated/folded). "side_by_side" simply
     divides the inner width into N panels separated by mullions.
   * Barn track = a straight horizontal bar above the leaf + two roller tabs; sliding = a head-rail
@@ -43,7 +46,7 @@ import numpy as np
 # the whole part set scale-correct. ``track_overhang`` is a dimensionless ratio.
 CANON = dict(
     lining_depth = 120.0,   # frame depth into wall (extrusion depth of the lining)
-    frame_thk    =  60.0,   # frame face width (hollow-profile WallThickness — the drivable border)
+    frame_thk    =  60.0,   # frame face width (width of each of the 4 lining bars — the border)
     slab_thk     =  45.0,   # opaque leaf / panel thickness
     glaze_thk    =  24.0,   # glazed-panel thickness
     bar_thk      =  60.0,   # mullion thickness (divider between leaves)
@@ -113,12 +116,6 @@ def _extrude_along(f, profile, center, depth_dir, width_dir, depth):
 def _rect(f, xdim, ydim, cx=0.0, cy=0.0):
     return f.create_entity("IfcRectangleProfileDef", ProfileType="AREA",
                            Position=_ax2(f, cx, cy), XDim=float(xdim), YDim=float(ydim))
-
-
-def _hollow(f, xdim, ydim, wall):
-    return f.create_entity("IfcRectangleHollowProfileDef", ProfileType="AREA",
-                           Position=_ax2(f, 0, 0), XDim=float(xdim), YDim=float(ydim),
-                           WallThickness=float(wall))
 
 
 def _clamp(v, lo, hi):
@@ -243,9 +240,20 @@ def build_door_items(f, width, height, depth, *, recipe, dims,
     rail_thk = min(d["rail_thk"], 0.4 * inner_h)
 
     items = []
-    # 1) Outer lining frame — the single hollow profile, full depth.
-    items.append((_extrude_along(f, _hollow(f, width, height, frame_thk),
-                                 center, depth_dir, width_dir, depth), "frame"))
+    # 1) Outer lining frame — FOUR solid bars (head + sill span full width; the two jambs span the
+    #    inner height between them), forming a border of thickness `frame_thk`. Replaces the single
+    #    IfcRectangleHollowProfileDef, which Gaudi mis-renders (the pane↔frame "space" — §6); four
+    #    plain IfcRectangleProfileDef bars render flush in every viewer including Gaudi.
+    items += [
+        (_extrude_along(f, _rect(f, width, frame_thk, cy=(height - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),
+        (_extrude_along(f, _rect(f, width, frame_thk, cy=-(height - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),
+        (_extrude_along(f, _rect(f, frame_thk, inner_h, cx=-(width - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),
+        (_extrude_along(f, _rect(f, frame_thk, inner_h, cx=(width - frame_thk) / 2.0),
+                        center, depth_dir, width_dir, depth), "frame"),
+    ]
 
     # 2) Panels + mullions (cased opening has none).
     panes, mullions = _panel_layout(inner_w, n, bar_thk) if n > 0 else ([], [])

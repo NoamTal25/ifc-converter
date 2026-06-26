@@ -22,11 +22,13 @@ Exit 0 = all fixtures pass; non-zero = a failure. Each fixture is converted into
   fill/void edge count identical.
 - **B — preservation.** Openings unmoved; rebuilt windows keep their exact `ObjectPlacement`;
   `FootPrint` preserved where present; source file byte-identical after the run.
-- **C — manipulable state.** Each rebuilt window is exactly one `IfcRectangleHollowProfileDef`
-  lining (border > 0) + ≥1 inset `IfcRectangleProfileDef` pane (+ optional mullion/transom bar),
-  every Body item styled.
-- **D — manipulate.** Drive the lining `XDim`/`YDim` ×1.5 → border (`WallThickness`) constant,
-  window grows ~1.5× on the driven axis only. Move (rigid, size preserved, GlobalId intact).
+- **C — manipulable state.** Each rebuilt window is ≥5 plain `IfcRectangleProfileDef` swept solids
+  (a 4-bar lining + ≥1 inset pane + optional mullion/transom), with **no**
+  `IfcRectangleHollowProfileDef` (Gaudi mis-renders it — §6), every Body item styled, and at least
+  one solid strictly inset on the face plane (a pane within the border).
+- **D — manipulate.** Parametric resize drives the **shared recipe** (the function that authored
+  every rebuilt window: build at W vs 1.5·W for single + both split topologies) → lining grows ~1.5×
+  on the driven axis only, frame border held constant. Move (rigid, size preserved, GlobalId intact).
   Rotate (geometry untouched). No new validate errors after each edit. Bbox is computed
   **analytically** from profile + placement (the geom kernel returns nondeterministic empty
   meshes on freshly-authored solids — §6).

@@ -98,8 +98,10 @@ provably identical to its golden, scaled. Coordinate convention: profile **X=wid
 extruded along **depth** (through-wall); body centred on `center`; `depth_dir`/`width_dir` supplied
 by the caller (axis-aligned for the golden, measured axes for an instance).
 
-- **Lining** = `IfcRectangleHollowProfileDef` (full W·H, full depth); `WallThickness` = the single
-  **drivable frame-border parameter** → "make it wider" = set the lining `XDim`.
+- **Lining** = **4 solid `IfcRectangleProfileDef` bars** (head + sill full-width, two jambs spanning
+  the inner height) of width `frame_thk` — **NOT** an `IfcRectangleHollowProfileDef`. Gaudi mis-renders
+  the hollow profile (its inner opening renders larger than authored → a uniform pane↔frame "space";
+  Blender/openIFC render it flush). Four plain bars render flush everywhere — see CLAUDE.md §6.
 - **Panels** = inset `IfcRectangleProfileDef` leaves; **mullions** between panels; **head rail**
   (sliding) / **barn track + 2 rollers** (barn); **handles** (lever / pull) as boxes proud of both
   faces. `panels=0` → lining only (cased opening).
@@ -120,7 +122,7 @@ Decision #3 (clean & simplified first pass) — recorded so we tune after viewer
   they read as connected). **DOOR_BARN is modelled as 2 leaves on one track** vs DOOR_SINGLE_BARN's
   1 leaf — *confirm the 1-leaf-vs-2-leaf interpretation of the PDF "BARN" / "BARN+SINGLE" split.*
 - **Sliding** = leaf + a head-rail bar across the top of the opening.
-- **Lining is a full 4-sided hollow rectangle** (real frames are usually 3-sided / no sill).
+- **Lining is a full 4-sided border (4 solid bars)** (real frames are usually 3-sided / no sill).
 - **DOOR_POCKET's pull is proud of both faces**; a real pocket pull is recessed.
 - **DOOR_OPENING** = a cased opening (lining frame only, no leaf/handle).
 

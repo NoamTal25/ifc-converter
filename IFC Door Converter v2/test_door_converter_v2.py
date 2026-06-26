@@ -3,21 +3,21 @@
 test_door_converter_v2.py — acceptance/regression tester for the v2 door converter.
 
 Mirrors the window v2 tester (and Gal's methodology): analytical, **no Blender**. A converted door
-is manipulable because its lining is now a clean parametric profile
-(``IfcRectangleHollowProfileDef.XDim`` / ``WallThickness``), and that is tested far more reliably in
-code than by eye. The harness, per fixture:
+is manipulable because its geometry is now clean parametric rectangular swept solids, and that is
+tested far more reliably in code than by eye. The harness, per fixture:
 
   - runs ``convert(src, tmp)`` into a THROWAWAY temp,
   - re-derives every invariant from scratch (does NOT call the converter's verify()),
-  - and MANIPULATES each rebuilt door (parametric resize of the lining / move / rotate), asserting
-    it behaves well (frame border constant, lining grows along the driven axis, moves rigidly, stays
-    valid).
+  - and MANIPULATES doors (parametric resize via the shared recipe, plus per-instance move /
+    rotate), asserting it behaves well (frame border constant, lining grows along the driven axis,
+    moves rigidly, stays valid).
 
-Generalised for v2's door topologies: a rebuilt door is **one IfcRectangleHollowProfileDef lining +
-N≥0 inset IfcRectangleProfileDef parts (panels / mullions / rails / track / rollers / handles)**, all
-styled. Single, double, pocket, sliding, bifold and the cased opening (lining only) all satisfy this.
-Because barn tracks + proud handles extend beyond the lining, the parametric-resize check is measured
-on the **lining solid itself**, not the whole-door bbox.
+Generalised for v2's door topologies: a rebuilt door is **a 4-bar IfcRectangleProfileDef lining +
+N≥0 IfcRectangleProfileDef parts (panels / mullions / rails / track / rollers / handles)**, all
+styled, with NO IfcRectangleHollowProfileDef (Gaudi mis-renders the hollow profile — §6). Single,
+double, pocket, sliding, bifold and the cased opening (lining only) all satisfy this. The
+parametric-resize check drives the shared recipe directly (the function that authored every rebuilt
+door), measuring the 'frame' bars + 'panel's so proud handles / barn track don't skew it.
 
 Teeth / negative control: the SAME manipulable-state test on the ORIGINAL baked doors MUST fail
 (a baked brep / mapped item has no drivable hollow-lining parameter), and the converter must rebuild
@@ -174,44 +174,22 @@ def _door_world_bbox(d):
     return wc.min(0), wc.max(0)
 
 
-def _parts(d):
-    """(frame_solid, frame_profile, rects) where rects is a list of (solid, RectangleProfileDef)
-    for every non-hollow rect solid (panels / mullions / rails / track / rollers / handles). None if
-    the door is not in the clean parametric state (baked/mapped, or not exactly one hollow lining)."""
+def _is_manipulable(model, d):
+    """True iff d is in the clean, parameter-drivable state the converter produces: its Body is ≥4
+    plain rectangular swept solids (a 4-bar lining + any panels / mullions / rails / track / rollers
+    / handles), with NO IfcRectangleHollowProfileDef (Gaudi mis-renders it, §6), every item styled.
+    A leafless cased opening is the 4 lining bars alone → minimum 4. Baked / mapped doors have no
+    rect swept solids → fail (the test's teeth)."""
     solids = _solids(d)
-    if not solids:
-        return None
-    frame = fp = None
-    rects = []
+    if len(solids) < 4:
+        return False
     for s in solids:
         pr = s.SweptArea
-        # IfcRectangleHollowProfileDef IS-A IfcRectangleProfileDef → test hollow FIRST (§6).
-        if pr.is_a("IfcRectangleHollowProfileDef"):
-            if frame is not None:
-                return None              # more than one hollow lining → not our topology
-            frame, fp = s, pr
-        elif pr.is_a("IfcRectangleProfileDef"):
-            rects.append((s, pr))
-    if frame is None:
-        return None
-    return frame, fp, rects
-
-
-def _is_manipulable(model, d):
-    """True iff d is in the clean, parameter-drivable state the converter produces: exactly one
-    hollow lining (border > 0), every Body item styled, and either ≥1 inset rectangular panel
-    (a leaf) OR a leafless cased opening (lining only). Baked / mapped doors fail."""
-    p = _parts(d)
-    if p is None:
-        return False
-    frame, fp, rects = p
-    if not fp.WallThickness or fp.WallThickness <= 0:
-        return False
-    inset = any(pr.XDim < fp.XDim - 1e-9 and pr.YDim < fp.YDim - 1e-9 for _s, pr in rects)
-    if rects and not inset:
-        return False                     # has parts but none inset → not our leaf topology
+        # reject hollow profiles (test hollow FIRST — it IS-A IfcRectangleProfileDef, §6) + non-rects
+        if pr.is_a("IfcRectangleHollowProfileDef") or not pr.is_a("IfcRectangleProfileDef"):
+            return False
     styled = {st.Item for st in model.by_type("IfcStyledItem")}
-    if frame not in styled or any(s not in styled for s, _ in rects):
+    if any(s not in styled for s in solids):
         return False
     return True
 
@@ -286,35 +264,56 @@ def layer_C_manipulable_state(c, after):
     return marked
 
 
-def _resize_axis(c, out, base_err, dim, label):
-    """Drive the LINING profile's `dim` (XDim/YDim) to 1.5x, keep the border constant, confirm the
-    lining grew along that axis only — the parametric 'make it wider'. Measured on the lining solid
-    itself (proud handles / barn track extend beyond the lining, so whole-door bbox is the wrong
-    yardstick)."""
-    m = ifcopenshell.open(str(out))
-    for d in _marked(m):
-        p = _parts(d)
-        if p is None:
-            continue
-        frame, fp, rects = p
-        mn0, mx0 = _solid_local_bbox(frame); ext0 = mx0 - mn0
-        dd = int(np.argmin(ext0)); u, v = [i for i in range(3) if i != dd]
-        grow_axis = u if dim == "XDim" else v
-        keep_axis = v if dim == "XDim" else u
-        thk0 = fp.WallThickness
-        setattr(fp, dim, getattr(fp, dim) * 1.5)
-        mn1, mx1 = _solid_local_bbox(frame); ext1 = mx1 - mn1
-        c.check(abs(fp.WallThickness - thk0) < 1e-9, f"[D-{label}] frame border constant: {d.Name!r}")
-        c.check(abs(ext1[grow_axis] / ext0[grow_axis] - 1.5) < 0.05,
-                f"[D-{label}] lining grew ~1.5x: {d.Name!r}")
-        c.check(abs(ext1[keep_axis] - ext0[keep_axis]) < 1e-3 * max(1.0, ext0[keep_axis]),
-                f"[D-{label}] other axis unchanged: {d.Name!r}")
-    c.check(_nerr(m) <= base_err, f"[D-{label}] no new validate errors")
+def _recipe_door_items(formx_type, width, height):
+    """Build one door via the SHARED recipe (the same code that authored every rebuilt door),
+    axis-aligned (width=X, height=Y, depth=Z), in a throwaway file."""
+    f = ifcopenshell.file(schema="IFC4")
+    td = door_types.TYPES[formx_type]
+    return DC.gg.build_door_items(
+        f, width, height, DC.gg.LINING_DEPTH, recipe=td["recipe"],
+        dims=DC.gg.dims_in_units(0.001),
+        center=(0.0, 0.0, DC.gg.LINING_DEPTH / 2.0), depth_dir=(0, 0, 1), width_dir=(1, 0, 0))
+
+
+def _frame_inner_extents(items):
+    """(outer_ext, inner_ext) as (X, Y, Z) arrays: outer = bbox of the 'frame' bars, inner = bbox
+    of the 'panel' solids (None if leafless)."""
+    fo = np.vstack([_solid_corners(s) for s, r in items if r == "frame"])
+    outer = fo.max(0) - fo.min(0)
+    panels = [s for s, r in items if r == "panel"]
+    inner = None
+    if panels:
+        pi = np.vstack([_solid_corners(s) for s in panels])
+        inner = pi.max(0) - pi.min(0)
+    return outer, inner
+
+
+def _parametric_resize_check(c, formx_type, axis, label):
+    """Drive the SHARED recipe 1.5x along one face axis (0=width/X, 1=height/Y) and confirm the
+    lining grows on that axis ONLY, with the frame border held constant — the real 'make it wider'.
+    The lining is now 4 bars, so this tests the generative function (which authored every rebuilt
+    door) rather than mutating a single hollow profile. Measured on the 'frame' bars + 'panel's, so
+    proud handles / barn track don't skew it."""
+    base_w, base_h = 1000.0, 2100.0
+    o0, i0 = _frame_inner_extents(_recipe_door_items(formx_type, base_w, base_h))
+    o1, i1 = _frame_inner_extents(_recipe_door_items(
+        formx_type, base_w * (1.5 if axis == 0 else 1.0), base_h * (1.5 if axis == 1 else 1.0)))
+    other = 1 - axis
+    c.check(abs(o1[axis] / o0[axis] - 1.5) < 0.02, f"[D-{label}] lining grew ~1.5x")
+    c.check(abs(o1[other] - o0[other]) < 1e-6 * max(1.0, o0[other]),
+            f"[D-{label}] other axis unchanged")
+    if i0 is not None and i1 is not None:
+        b0 = (o0[axis] - i0[axis]) / 2.0
+        b1 = (o1[axis] - i1[axis]) / 2.0
+        c.check(abs(b1 - b0) < 1e-6 * max(1.0, b0), f"[D-{label}] frame border constant")
 
 
 def layer_D_manipulate(c, out, base_err):
-    _resize_axis(c, out, base_err, "XDim", "width")
-    _resize_axis(c, out, base_err, "YDim", "height")
+    # PARAMETRIC RESIZE — exercise the shared recipe (it authored every rebuilt door) along each
+    # face axis, for a single-leaf and a 2-leaf type. Border held constant = real 'make it wider'.
+    for ft in ("DOOR_SINGLE", "DOOR_DOUBLE"):
+        _parametric_resize_check(c, ft, 0, f"width/{ft}")
+        _parametric_resize_check(c, ft, 1, f"height/{ft}")
 
     # MOVE — translate placement; door shifts rigidly (size preserved, GlobalId intact)
     m = ifcopenshell.open(str(out))
@@ -396,7 +395,7 @@ def _formx_type_of(d):
 def _expected_item_count(knobs):
     """Body solid count a recipe must produce — mirrors golden_door_geometry.build_door_items."""
     n = int(knobs.get("panels", 1))
-    items = 1 + n + max(0, n - 1)                 # lining + panels + (n-1) mullions
+    items = 4 + n + max(0, n - 1)                 # 4-bar lining + panels + (n-1) mullions
     if knobs.get("head_rail") and n > 0:
         items += 1                                # head rail
     if knobs.get("barn_track"):

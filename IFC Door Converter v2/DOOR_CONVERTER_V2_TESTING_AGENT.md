@@ -25,16 +25,17 @@ inputs are never mutated (asserted by sha256 + mtime). Exit 0 = all pass.
   converter never mints a type).
 - **B — Preservation.** Openings unmoved; rebuilt doors keep their exact placement; `FootPrint`
   preserved where present; source file byte-identical after the run.
-- **C — Manipulable state.** Every rebuilt (marked) door is in the clean parametric state: exactly
-  one `IfcRectangleHollowProfileDef` lining (border > 0) + ≥1 inset rect panel (or a leafless cased
-  opening), all Body items styled.
-- **D — Manipulate.** Drive the **lining** profile `XDim`/`YDim` ×1.5 → border constant, lining grows
-  along that axis only (measured on the lining solid — barn track / proud handles extend beyond it).
-  Move (rigid shift, size preserved, GlobalId intact). Rotate (geometry untouched, stays valid).
-  Each manipulation introduces no new validate errors.
+- **C — Manipulable state.** Every rebuilt (marked) door is in the clean parametric state: ≥4 plain
+  `IfcRectangleProfileDef` swept solids (a 4-bar lining + any panels/mullions/rails/track/handles),
+  with **no** `IfcRectangleHollowProfileDef` (Gaudi mis-renders it — §6), all Body items styled.
+- **D — Manipulate.** Parametric resize drives the **shared recipe** (the function that authored every
+  rebuilt door: build a single-leaf + a 2-leaf type at W vs 1.5·W) → lining grows along that axis only,
+  border held constant (measured on the 'frame' bars + 'panel's, so barn track / proud handles don't
+  skew it). Move (rigid shift, size preserved, GlobalId intact). Rotate (geometry untouched, stays
+  valid). Each manipulation introduces no new validate errors.
 - **E — Idempotency.** Re-running the converter on its own output leaves rebuilt doors unchanged.
 - **F — Negative control (TEETH).** The SAME manipulable-state test on the ORIGINAL baked doors must
-  return **0** (a baked brep / mapped item has no drivable hollow lining) — proving the suite can
+  return **0** (a baked brep / mapped item has no clean rect-only swept solids) — proving the suite can
   detect a non-working converter. Plus: every rebuilt door is manipulable, and the rebuilt count
   matches the pinned `BASELINE_REBUILT` per fixture (a no-op / silent regression trips this).
 - **G — Classification (TEETH against misclassification).** Pins the rebuilt **FormX-type multiset**
@@ -55,8 +56,9 @@ Current: **4/4 fixtures, 276 checks.**
 - **Kernel returns metres** regardless of file units → divide by unit scale.
 - **Face-plane drift only** — proud handles + the folding-depth clamp deliberately change the
   through-wall envelope; drift is measured on the two largest-extent axes.
-- **Hollow-profile linings don't render in the web "openIFC" viewer** (a web-ifc limitation, not a
-  data bug); Blender / ifcopenshell / FormX are correct.
+- **Frame/lining = 4 solid bars, NOT `IfcRectangleHollowProfileDef`** (§6). Gaudi mis-renders the
+  hollow profile (uniform pane↔frame "space"), and the web "openIFC" viewer skips it entirely;
+  4 plain bars render flush everywhere. The tester therefore rejects any hollow profile.
 
 ## If a check fails
 Read the `FAIL [layer] …` line. A/B fail = something other than doors changed (preservation bug).

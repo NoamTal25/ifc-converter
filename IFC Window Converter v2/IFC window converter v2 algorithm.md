@@ -56,14 +56,18 @@ Returns a recipe: `{gate, reason, formx_type, predef, split, part_type, golden, 
 
 The same module that generates the reviewable golden IFCs (`generate_goldens.py`) authors the
 in-place geometry, so a converted window is provably identical to its golden, scaled. Topologies:
-- `split=None` → hollow lining + 1 centred pane
-- `split='V'` → hollow lining + centred vertical mullion + L/R panes (DOUBLE_HORIZONTAL)
-- `split='H'` → hollow lining + centred horizontal transom + T/B panes (DOUBLE_VERTICAL / double-hung)
+- `split=None` → 4-bar lining + 1 centred pane
+- `split='V'` → 4-bar lining + centred vertical mullion + L/R panes (DOUBLE_HORIZONTAL)
+- `split='H'` → 4-bar lining + centred horizontal transom + T/B panes (DOUBLE_VERTICAL / double-hung)
 
-Lining = `IfcRectangleHollowProfileDef` (`WallThickness` = the drivable frame border); panes/bars
-= `IfcRectangleProfileDef`; all extruded along the measured depth axis, centred on the measured
-box, so the rebuild lands exactly in the opening. `frame_thk`/`glaze_thk`/`bar_thk` are clamped so
-a small instance still yields a valid frame + inset pane.
+Lining = **4 solid `IfcRectangleProfileDef` bars** (head + sill full-width, two jambs spanning the
+inner height) of width `frame_thk` — **NOT** an `IfcRectangleHollowProfileDef`. Gaudi mis-renders the
+hollow profile (it draws the ring's inner opening larger than authored, leaving a uniform pane↔frame
+"space"; Blender/openIFC render it flush, and openIFC *skips* it entirely). A 3-window side-by-side
+test (hollow = gap, 4 bars = flush) confirmed this in Gaudi — see CLAUDE.md §6. Panes/mullion/transom
+= `IfcRectangleProfileDef`; all extruded along the measured depth axis, centred on the measured box,
+so the rebuild lands exactly in the opening. `frame_thk`/`glaze_thk`/`bar_thk` are clamped so a small
+instance still yields a valid frame + inset pane.
 
 ## Step 4 — Styles, params, swap
 

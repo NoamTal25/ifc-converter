@@ -87,23 +87,22 @@ def make_window_type(f, owner, name, description, predef, part_type, prop_sets, 
         return None
 
 
-def make_lining_props(f, owner, *, lining_depth, lining_thk, split, bar_thk,
-                      width, height):
-    """IfcWindowLiningProperties — the parametric lining detail (schema-stable attrs)."""
-    kw = dict(GlobalId=_guid(), OwnerHistory=owner, Name="Lining",
-              LiningDepth=float(lining_depth), LiningThickness=float(lining_thk))
-    if split == "V":
-        kw.update(MullionThickness=float(bar_thk), FirstMullionOffset=float(width) / 2.0)
-    elif split == "H":
-        kw.update(TransomThickness=float(bar_thk), FirstTransomOffset=float(height) / 2.0)
+def make_lining_props(f, owner):
+    """IfcWindowLiningProperties — authored VALUE-LESS (entity + Name only, no dimensional fields),
+    matching the flush FormX-native reference (HUDSON_ADU). The FormX dimension contract rides on
+    Pset_WindowCommon + IfcWindow.OverallWidth/Height; the frame is real geometry (4 solid bars),
+    so nothing parametric is lost. (CLAUDE.md §6.)"""
     try:
-        return f.create_entity("IfcWindowLiningProperties", **kw)
+        return f.create_entity("IfcWindowLiningProperties", GlobalId=_guid(),
+                               OwnerHistory=owner, Name="Lining")
     except Exception:
         return None
 
 
 def make_panel_props(f, owner, panels):
-    """One IfcWindowPanelProperties per (panel_position, operation_type)."""
+    """One IfcWindowPanelProperties per (panel_position, operation_type), VALUE-LESS — only the
+    OperationType + PanelPosition enums (the meaningful FormX semantics); no FrameDepth/FrameThickness
+    (the flush native reference leaves them null)."""
     out = []
     for pos, op in panels:
         try:

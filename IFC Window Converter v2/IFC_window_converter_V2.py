@@ -293,12 +293,15 @@ def _author_formx_apparatus(model, win, recipe, owner, scale, width, height, dep
       * Pset_WindowCommon (the PDF param contract: Overall/Rough W·H, Depth, PanelType, Split,
         HandFlipped/FacingFlipped),
     each linked via IfcRelDefinesByProperties (occurrence-level property definitions are
-    many-per-element, so no collision with the preserved type relationship)."""
+    many-per-element, so no collision with the preserved type relationship).
+
+    The lining/panel property entities are authored VALUE-LESS (no dimensional fields), matching the
+    flush FormX-native reference: the FormX param contract rides on Pset_WindowCommon +
+    IfcWindow.OverallWidth/Height, and Gaudi draws nothing from value-less props. (The pane↔frame
+    "space" was the hollow-profile frame, since replaced by 4 solid bars — CLAUDE.md §6.)"""
     frame_thk = FRAME_THK_M / scale
-    bar_thk = BAR_THK_M / scale
-    lining = sa.make_lining_props(
-        model, owner, lining_depth=depth, lining_thk=frame_thk,
-        split=recipe["split"], bar_thk=bar_thk, width=width, height=height)
+    bar_thk = BAR_THK_M / scale              # used by the Split{Width,Height} Pset value below
+    lining = sa.make_lining_props(model, owner)
     panels = sa.make_panel_props(model, owner, recipe["panels"])
     for pdef in [lining] + panels:
         if pdef is not None:

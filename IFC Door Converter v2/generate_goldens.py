@@ -204,22 +204,20 @@ def _build_psets(f, owner, door, spec):
 # Lining + panel properties
 # ---------------------------------------------------------------------------
 def _build_door_props(f, owner, spec):
-    lining_kw = dict(GlobalId=guid.new(), OwnerHistory=owner, Name="Lining",
-                     LiningDepth=LINING_DEPTH, LiningThickness=LINING_THK,
-                     ThresholdDepth=0.0, ThresholdThickness=0.0)
+    """Author the lining + per-panel property ENTITIES value-LESS (no dimensional fields), matching
+    the flush FormX-native reference. Gaudi renders an IfcDoor parametrically from these *values* —
+    a valued lining/panel set makes it draw its own inset panel (the "gap"); a value-less set lets
+    it render the flush Body mesh. The geometry (build_door_items) is unchanged. (CLAUDE.md §6.)"""
+    lining = f.create_entity("IfcDoorLiningProperties",
+                             GlobalId=guid.new(), OwnerHistory=owner, Name="Lining")
     n = spec["recipe"].get("panels", 1)
-    if n >= 2:
-        lining_kw.update(TransomThickness=BAR_THK)   # divider present (mullion ≈ transom slot)
-    lining = f.create_entity("IfcDoorLiningProperties", **lining_kw)
-
     panels = []
     positions = spec.get("panel_positions") or _default_positions(n)
     for pos, op in positions:
         panels.append(f.create_entity("IfcDoorPanelProperties",
                                       GlobalId=guid.new(), OwnerHistory=owner,
                                       Name=f"Panel-{pos}",
-                                      PanelOperation=op, PanelPosition=pos,
-                                      PanelDepth=SLAB_THK))
+                                      PanelOperation=op, PanelPosition=pos))
     return lining, panels
 
 

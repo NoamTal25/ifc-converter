@@ -302,8 +302,12 @@ Body**.
   scrubbed before leaf-count rules). All-glass donor → synthesize opaque so the frame isn't see-through.
 - **Occurrence-level apparatus, never a 2nd `IfcDoorType`** (§6): `Pset_DoorCommon` (Overall/Rough
   W·H, Depth) + `FormX_Door_Window` (HandFlipped/FacingFlipped) + `IfcDoorLiningProperties` + per-panel
-  `IfcDoorPanelProperties`. **Swaps Body only** (match by `.id()`), preserves FootPrint/identity/
-  relationships. Suffix `-D2`; marker `"FormX-D2 parametric door"`.
+  `IfcDoorPanelProperties` (lining/panel props authored **value-less** — entity + enums only — matching
+  the flush FormX-native reference; dims ride on `Pset_DoorCommon` + `IfcDoor.OverallWidth/Height`, §6).
+  **Swaps Body only** (match by `.id()`), preserves FootPrint/identity/relationships. Suffix `-D2`;
+  marker `"FormX-D2 parametric door"`.
+- **Lining = 4 solid `IfcRectangleProfileDef` bars, NOT a hollow profile** (§6): Gaudi mis-renders
+  `IfcRectangleHollowProfileDef`, leaving a pane↔frame "space"; four plain bars render flush everywhere.
 - **Per-schema quirks in `schema_adapter.py`** (IfcDoorType IFC4/4X3 vs IfcDoorStyle IFC2X3, style
   wrapping, semantics availability). USERDEFINED + `UserDefinedOperationType` for the slide/swing combos.
 
@@ -312,12 +316,12 @@ doors rebuilt** across the 4 ADUs (2/1/3/5), `verify()` ALL CHECKS PASSED, **0 n
 0.0 mm face-bbox drift, identity/placement/FootPrint preserved, idempotent. Tester
 (`test_door_converter_v2.py`) **4/4 fixtures, 276 checks, teeth-verified** — incl. a **layer G** that
 pins the rebuilt FormX-type multiset (forcing every door to one type FAILS it, where it slipped the
-count-only checks). **Open:** **the Gaudi pane↔frame "space" issue (§6 ⚠️) — systemic across windows
-AND doors, being solved in a dedicated session; the same lining/panel-property hypothesis + fix applies
-here (`schema_adapter.py` IfcDoorLiningProperties/IfcDoorPanelProperties)**; FormX-architecture
-viewer review of the 16 goldens + `-D2` outputs (the agreed ground truth); refine the first-pass
-simplifications (flat bifold/combo panels, barn 1-vs-2-leaf, recessed pocket pull — see algorithm §4);
-HandFlipped/FacingFlipped derivation; adjacency-merge; pipeline orchestrator.
+count-only checks). **Gaudi pane↔frame "space" RESOLVED (2026-06-26, §6):** root cause was the
+`IfcRectangleHollowProfileDef` lining — replaced by 4 solid bars; user confirmed `-D2` renders flush
+in Gaudi. **Open:** FormX-architecture viewer review of the 16 goldens + `-D2` outputs (the agreed
+ground truth); refine the first-pass simplifications (flat bifold/combo panels, barn 1-vs-2-leaf,
+recessed pocket pull — see algorithm §4); HandFlipped/FacingFlipped derivation; adjacency-merge;
+pipeline orchestrator.
 
 ---
 
@@ -339,15 +343,17 @@ recipe) → inject measured params → swap the Body**.
   `GeometricSet` → **gated** (preserved, flagged). No-operation-keyword → default **FIXED**.
 - **Shared geometry recipe (`golden_geometry.py`)** is used by BOTH `generate_goldens.py` (writes
   the 7 reviewable `golden_templates/*.ifc`) and the converter → a converted window is *provably
-  identical to its golden, scaled*. Lining = `IfcRectangleHollowProfileDef` (`WallThickness` = the
-  drivable frame border); panes/bars = `IfcRectangleProfileDef`; extruded along the measured depth
-  axis. Same axis-role rule as the door converter (thinnest = depth; more-vertical face axis = height).
+  identical to its golden, scaled*. Frame = **4 solid `IfcRectangleProfileDef` bars** (head + sill
+  full-width, two jambs spanning the inner height) — NOT a hollow profile, which Gaudi mis-renders
+  (§6); panes/mullion/transom = `IfcRectangleProfileDef`; extruded along the measured depth axis.
+  Same axis-role rule as the door converter (thinnest = depth; more-vertical face axis = height).
 - **No second `IfcWindowType`.** These windows are already Revit-typed and `IfcRelDefinesByType` is
   `[0:1]` — minting a new type was the one bug found (a duplicate type per window failed `validate`
   in IFC4/4X3 only). Fix: author `Pset_WindowCommon` + `IfcWindowLiningProperties` +
   `IfcWindowPanelProperties` at the **occurrence** level via `IfcRelDefinesByProperties`
-  (many-per-element). `Pset_WindowCommon` carries the PDF param contract (Overall/Rough W·H, Depth,
-  PanelType(s), Split, HandFlipped/FacingFlipped=False default).
+  (many-per-element). The lining/panel props are authored **value-less** (matching the flush
+  FormX-native reference, §6); `Pset_WindowCommon` carries the PDF param contract (Overall/Rough W·H,
+  Depth, PanelType(s), Split, HandFlipped/FacingFlipped=False default).
 - **Per-schema quirks are centralized in `schema_adapter.py`** (the flagged locus, per the user's
   "modular + could have a divergent procedure per IFC type" steer): style wrapping, PredefinedType
   availability, `IfcWindowType` vs `IfcWindowStyle`. Every author helper degrades (skip+log).
@@ -358,18 +364,15 @@ Result: `verify()` ALL CHECKS PASSED on all 4 ADUs — rebuilt **6/5/4/8** (LEXF
 SAN_JUAN skylight, Sunflower bodiless gated), **0 new validate errors**, idempotent. Tester
 (`test_window_converter_v2.py`) **4/4 fixtures, 394 checks, teeth-verified**.
 
-**Glazing-seating iterations (2026-06-26, `golden_geometry.build_window_items`):** viewer review
-found a "space"/well between frame and glass in **Gaudi**. (1) glass was a thin 20 mm pane recessed
-mid-depth in the open hollow lining tube → filled it to ~full depth; (2) then made the glass
-**exactly fill the opening, flush** (0 mm recess, verified) and the **mullion full-height** (was
-ending at the inner opening → gap at the head). Mullion gap fixed. **BUT the uniform pane↔frame
-space persists in Gaudi even at 0 mm geometric recess → it's Gaudi-side/semantic, not our mesh —
-see §6 ⚠️ OPEN.** Checkpoint commit `1e66655` = the lapped+recessed variant; current (uncommitted)
-= flush + full-height mullion.
+**Gaudi pane↔frame "space" RESOLVED (2026-06-26, §6).** The earlier glazing-seating iterations
+(recess→0, lapped→flush, full-height mullion) did NOT move it because the cause was not the glazing:
+it was the **`IfcRectangleHollowProfileDef` frame** — Gaudi mis-renders the hollow ring's inner
+opening. A 3-window side-by-side test (hollow frame = gap, 4 solid bars = flush, solid box = solid),
+confirmed by the user in Gaudi, pinned it. **Fix:** `build_window_items` now authors the frame as 4
+solid bars; user confirmed `-WIN2` renders flush.
 
-**Open:** **the Gaudi pane-space issue (§6 ⚠️, dedicated session)**; user viewer review of goldens
-+ `-WIN2`; skylight/trapezoid templates; HandFlipped/FacingFlipped derivation; adjacency-merge;
-pipeline orchestrator.
+**Open:** skylight/trapezoid templates; HandFlipped/FacingFlipped derivation; adjacency-merge;
+pipeline orchestrator. (Gaudi gap + golden/`-WIN2` viewer review now resolved.)
 
 ---
 
@@ -377,21 +380,34 @@ pipeline orchestrator.
 
 Hard-won, generalizable lessons (window converter was where they surfaced):
 
-- **⚠️ OPEN (2026-06-26): Gaudi (FormX's viewer) shows a UNIFORM "space" between pane and frame on
-  EVERY window AND door — likely semantic, not mesh-driven.** With window v2 glass authored to
-  *exactly* fill the opening **flush** (verified **0.0 mm** geometric recess, panes meeting
-  lining/mullion), Gaudi *still* renders a uniform gap around every pane, and the (now full-height)
-  mullion appears to stop at that gap. Blender + openIFC render it correctly (no gap). The user
-  reports it across *all* windows/doors ("standard issue in Gaudi across everything with a window
-  pane"). → The gap is almost certainly **Gaudi drawing its own frame + inset pane from the
-  property sets** (`IfcWindowLiningProperties.LiningThickness` / `IfcWindowPanelProperties` /
-  `IfcDoorLiningProperties` / `IfcDoorPanelProperties` — `FrameThickness`, `LiningThickness`,
-  mullion/panel offsets), or a Gaudi display convention — **not** our Body mesh. Two changes (5 mm
-  recess → 0, lapped → flush) did NOT move it, confirming it's not our geometry. **To resolve
-  (dedicated session):** get a Gaudi-NATIVE correct window/door IFC and *diff* its property
-  sets/representation against our output; test removing/zeroing/realigning the lining+panel props
-  in `schema_adapter.py` (both converters) and re-check in Gaudi; first confirm whether the gap also
-  appears on Gaudi-native (non-converted) windows (→ convention) or only ours (→ our params).
+- **✅ ROOT-CAUSED (geometry) + FIXED (2026-06-26): the Gaudi pane↔frame "space" was the
+  `IfcRectangleHollowProfileDef` frame, NOT properties.** Gaudi mis-renders the hollow profile —
+  it draws the rectangular ring's inner opening LARGER than authored, leaving a uniform band between
+  the lining and the pane. Blender/openIFC render the same mesh flush (and the repo README already
+  noted openIFC *skips* hollow-profile window frames — same root issue). **Disproved hypotheses
+  along the way (logged so we don't re-chase them):** (1) it is NOT a recess/lap — two earlier glaze
+  changes (5 mm→0, lapped→flush) didn't move it; (2) it is NOT the lining/panel property *values* —
+  authoring them value-less (matching the flush native `HUDSON_ADU.ifc`) did NOT close the gap; (3)
+  it is NOT properties at all — a **geom-only** output (zero added props) still gapped, and the
+  standalone goldens gapped. **The decisive test:** a 3-window diagnostic (`OUTPUT…/GEOM_DIAG_3windows.ifc`)
+  — A=hollow-profile frame **gapped**, B=4-solid-bar frame **flush**, C=single solid box solid — the
+  user confirmed in Gaudi. **Fix (both converters, shared recipe):** author the frame/lining as
+  **FOUR solid `IfcRectangleProfileDef` bars** (head + sill full-width, two jambs spanning the inner
+  height) instead of one hollow profile, in `golden_geometry.build_window_items` +
+  `golden_door_geometry.build_door_items`. Mullion/transom now span the inner opening (meet the
+  bars). Goldens regenerated (no hollow profiles; window single=5/double=7 solids, door single=6;
+  7/7 + 16/16 validate clean); both converters `verify()` ALL PASS (0 new validate errors, rebuilt
+  6/5/4/8 + 2/1/3/5); both testers 4/4 (their manipulability layers were rewritten: the frame is no
+  longer a single drivable hollow profile, so `_is_manipulable` now asserts clean rect-only swept
+  solids + an inset pane, and the resize check drives the SHARED recipe — building at W vs 1.5·W and
+  asserting the lining grows with the border held constant). **CONFIRMED RESOLVED — the user verified
+  a real converted `-WIN2`/`-D2` (in-wall, rotated) renders flush in Gaudi (2026-06-26).**
+  **Incidental (NOT the gap fix):** along the way the lining/panel property *entities* were also made
+  **value-less** (matching the flush native `HUDSON_ADU` — its lining/panel props are all-`None`; the
+  FormX param contract rides on `IfcWindow/Door.OverallWidth/Height` + `Pset_*`), since valued props
+  proved irrelevant to the gap. The temporary `FORMX_PROP_MODE` A/B toggle used to test the (wrong)
+  property hypothesis has been removed — `schema_adapter.make_lining_props`/`make_panel_props` now
+  author value-less unconditionally.
 - **Units vary (feet / mm / m) — never assume.** Read `ifcopenshell.util.unit.calculate_unit_scale`
   per file and author in file units. (Real ADUs are in **feet**, scale 0.3048.)
 - **The geom kernel returns vertices in METRES regardless of file units** — divide by unit scale
@@ -470,6 +486,8 @@ Hard-won, generalizable lessons (window converter was where they surfaced):
 | **Door v2: built mirroring window v2, with `door_types.py` as the single source of truth** | Both `generate_goldens.py` + `classify_door.py` import one 16-type table → the catalog is edited in one place ("come back and update the doors later"). Same shared-recipe / occurrence-Pset / Body-swap / verify+teeth backbone. | **Active (set 2026-06-26)** |
 | **Door v2: recipe is scale-correct via `dims_in_units(scale)` (no mm in the build path)** | The shared recipe is driven by the converter at feet scale; hard-coded mm constants would've authored 32-ft handles + loose clamps gave negative panes on narrow subdivided doors (both caught by the adversarial golden review). All linear dims flow from a canonical mm table converted to file units. | **Active (set 2026-06-26)** |
 | **Door v2: author all 16 PDF types as goldens + model canonical handles; clean-&-simplified first pass** | User decisions (2026-06-26): one golden per type (parity); handles authored (door v1 viewer regression was missing handles) though not a FormX param; bifold/combo flat, barn = track+rollers, pocket pull proud, DOOR_OPENING = cased opening — all flagged for the FormX-architecture viewer review to refine. | **Active (set 2026-06-26)** |
+| **Window + Door v2: frame/lining = 4 solid bars, NOT `IfcRectangleHollowProfileDef`** | Gaudi mis-renders the hollow profile (draws its inner opening larger → a uniform pane↔frame "space"); Blender/openIFC render it flush (openIFC *skips* it outright). A 3-window side-by-side test (hollow=gap, 4 bars=flush) confirmed by the user in Gaudi pinned it. Four plain `IfcRectangleProfileDef` bars render flush everywhere. The disproven property hypotheses (valued vs value-less lining/panel props) are logged in §6 so they aren't re-chased. | **Active (set 2026-06-26)** |
+| **Window + Door v2: lining/panel property sets authored VALUE-LESS** | The flush FormX-native reference (`HUDSON_ADU`) carries lining/panel props with all numeric fields null; the dimension contract rides on `IfcWindow/Door.OverallWidth/Height` + `Pset_*`. Value-less matches native and (proven) doesn't affect the Gaudi gap either way. The temporary `FORMX_PROP_MODE` A/B toggle used to test this was removed once geometry was found to be the real cause. | **Active (set 2026-06-26)** |
 | **Match the proven recipe (clean geometry + Name + PredefinedType + relations), NOT rich type/Pset apparatus** | Gal's production tools author zero Psets/element-types; the richer "golden-spec" was Claude-authored, unverified against FormX, and v1 worked without it. Lower risk, more likely to drop into FormX. | **Superseded by the 2026-06-25 pivot** (was the v1 stance) |
 | **Converters are self-contained (ifcopenshell only)** | Removed the window converter's imports of the old `classify.py`/`bakedness.py` (now archived). They were used only for a cosmetic Name + an informational log number — both inlined. New converters should follow suit: no dependency on `Old Context/`. | **Active (set 2026-06-23)** |
 | **Rebuild from the element's OWN measured local bbox; preserve GlobalId + placement in place** | Orientation-agnostic; keeps the element in its opening; only the element's representation/Name/PredefinedType change → the opening/fill/void/containment chain stays valid. | Active |

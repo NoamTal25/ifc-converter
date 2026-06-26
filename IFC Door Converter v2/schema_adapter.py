@@ -100,29 +100,28 @@ def make_door_type(f, owner, name, description, operation, user_op, prop_sets, d
         return None
 
 
-def make_lining_props(f, owner, *, lining_depth, lining_thk, has_divider, bar_thk):
-    """IfcDoorLiningProperties — the parametric lining detail (schema-stable attrs).
-    A divider between leaves is recorded as TransomThickness (the nearest lining attribute)."""
-    kw = dict(GlobalId=_guid(), OwnerHistory=owner, Name="Lining",
-              LiningDepth=float(lining_depth), LiningThickness=float(lining_thk),
-              ThresholdDepth=0.0, ThresholdThickness=0.0)
-    if has_divider:
-        kw["TransomThickness"] = float(bar_thk)
+def make_lining_props(f, owner):
+    """IfcDoorLiningProperties — authored VALUE-LESS (entity + Name only, no dimensional fields),
+    matching the flush FormX-native reference (HUDSON_ADU). The FormX dimension contract rides on
+    Pset_DoorCommon + IfcDoor.OverallWidth/Height; the lining is real geometry (4 solid bars), so
+    nothing parametric is lost. (CLAUDE.md §6.)"""
     try:
-        return f.create_entity("IfcDoorLiningProperties", **kw)
+        return f.create_entity("IfcDoorLiningProperties", GlobalId=_guid(),
+                               OwnerHistory=owner, Name="Lining")
     except Exception:
         return None
 
 
-def make_panel_props(f, owner, panels, panel_depth):
-    """One IfcDoorPanelProperties per (PanelPosition, PanelOperation)."""
+def make_panel_props(f, owner, panels):
+    """One IfcDoorPanelProperties per (PanelPosition, PanelOperation), VALUE-LESS — only the
+    PanelOperation + PanelPosition enums (the meaningful FormX semantics); no PanelDepth (the flush
+    native reference leaves it null)."""
     out = []
     for pos, op in panels:
         try:
             out.append(f.create_entity("IfcDoorPanelProperties", GlobalId=_guid(),
                                        OwnerHistory=owner, Name=f"Panel-{pos}",
-                                       PanelOperation=op, PanelPosition=pos,
-                                       PanelDepth=float(panel_depth)))
+                                       PanelOperation=op, PanelPosition=pos))
         except Exception:
             pass
     return out

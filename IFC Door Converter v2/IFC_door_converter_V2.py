@@ -319,15 +319,16 @@ def _author_formx_apparatus(model, door, recipe, owner, dims, width, height, dep
       * Pset_DoorCommon (Overall/Rough W·H, Depth, Reference, IsExternal) + Pset FormX_Door_Window
         (HandFlipped / FacingFlipped),
     each linked via IfcRelDefinesByProperties (occurrence-level definitions are many-per-element,
-    so no collision with the preserved type relationship)."""
-    frame_thk = dims["frame_thk"]
-    bar_thk = dims["bar_thk"]
-    panels = recipe["recipe"].get("panels", 1)
-    panel_th = dims["glaze_thk"] if recipe["recipe"].get("glazed") else dims["slab_thk"]
+    so no collision with the preserved type relationship).
 
-    lining = sa.make_lining_props(model, owner, lining_depth=depth, lining_thk=frame_thk,
-                                  has_divider=(panels >= 2), bar_thk=bar_thk)
-    panel_props = sa.make_panel_props(model, owner, recipe["panel_props"], panel_th)
+    The lining/panel property entities are authored VALUE-LESS (no dimensional fields), matching the
+    flush FormX-native reference: the FormX param contract rides on Pset_DoorCommon +
+    IfcDoor.OverallWidth/Height, and Gaudi draws nothing from value-less props. (The pane↔frame
+    "space" was the hollow-profile lining, since replaced by 4 solid bars — CLAUDE.md §6.)"""
+    frame_thk = dims["frame_thk"]
+
+    lining = sa.make_lining_props(model, owner)
+    panel_props = sa.make_panel_props(model, owner, recipe["panel_props"])
     for pdef in ([lining] + panel_props):
         if pdef is not None:
             sa.relate_propertyset(model, owner, pdef, door)

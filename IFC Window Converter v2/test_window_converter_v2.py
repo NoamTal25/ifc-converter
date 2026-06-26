@@ -3,19 +3,21 @@
 test_window_converter_v2.py — acceptance/regression tester for the v2 window converter.
 
 Mirrors the v1 tester (and Gal's methodology): analytical, **no Blender**. A converted window
-is manipulable because its geometry is now a clean parametric profile
-(``IfcRectangleHollowProfileDef.XDim`` / ``WallThickness``), and that is tested far more
-reliably in code than by eye. The harness, per fixture:
+is manipulable because its geometry is now clean parametric rectangular swept solids, and that
+is tested far more reliably in code than by eye. The harness, per fixture:
 
   - runs ``convert(src, tmp)`` into a THROWAWAY temp,
   - re-derives every invariant from scratch (does NOT call the converter's verify()),
-  - and MANIPULATES each rebuilt window (parametric resize / move / rotate), asserting it
-    behaves well (frame border constant, grows along the driven axis, moves rigidly, stays valid).
+  - and MANIPULATES windows (parametric resize via the shared recipe, plus per-instance move /
+    rotate), asserting it behaves well (frame border constant, grows along the driven axis,
+    moves rigidly, stays valid).
 
-Generalised for v2's golden topologies: a rebuilt window is exactly **one
-IfcRectangleHollowProfileDef lining + ≥1 inset IfcRectangleProfileDef pane (+ optional
-mullion/transom bars)**, all styled — single, double-horizontal (vertical mullion) and
-double-vertical / double-hung (horizontal transom) all satisfy this.
+Generalised for v2's golden topologies: a rebuilt window is **a 4-bar IfcRectangleProfileDef
+lining + ≥1 inset IfcRectangleProfileDef pane (+ optional mullion/transom bar)**, all styled,
+with NO IfcRectangleHollowProfileDef (Gaudi mis-renders the hollow profile — §6). Single,
+double-horizontal (vertical mullion) and double-vertical / double-hung (horizontal transom)
+all satisfy this. The parametric-resize check drives the shared recipe directly (the function
+that authored every rebuilt window) rather than mutating one profile.
 
 Teeth / negative control: the SAME manipulable-state test on the ORIGINAL baked windows MUST
 fail (a brep has no drivable width parameter), and the converter must rebuild exactly the
@@ -165,45 +167,35 @@ def _window_world_bbox(w):
     return wc.min(0), wc.max(0)
 
 
-def _parts(w):
-    """(frame_solid, frame_profile, panes) where panes is a list of (solid, RectangleProfileDef)
-    for every non-hollow rect solid (inset glazing + any mullion/transom bar). None if the window
-    is not in the clean parametric state (e.g. baked/mapped, or no single hollow lining)."""
-    solids = _solids(w)
-    if not solids:
-        return None
-    frame = fp = None
-    rects = []
-    for s in solids:
-        pr = s.SweptArea
-        # IfcRectangleHollowProfileDef IS-A IfcRectangleProfileDef → test hollow FIRST (§6).
-        if pr.is_a("IfcRectangleHollowProfileDef"):
-            if frame is not None:
-                return None              # more than one hollow lining → not our topology
-            frame, fp = s, pr
-        elif pr.is_a("IfcRectangleProfileDef"):
-            rects.append((s, pr))
-    if frame is None or not rects:
-        return None
-    return frame, fp, rects
+def _solid_local_bbox(solid):
+    pts = _solid_corners(solid)
+    return pts.min(0), pts.max(0)
 
 
 def _is_manipulable(model, w):
-    """True iff w is in the clean, parameter-drivable state the converter produces: one hollow
-    lining (border > 0) + ≥1 inset rectangular pane, every Body item styled. Baked/mapped fail."""
-    p = _parts(w)
-    if p is None:
+    """True iff w is in the clean, parameter-drivable state the converter produces: its Body is ≥5
+    plain rectangular swept solids — a 4-bar lining + ≥1 inset pane (+ optional mullion/transom) —
+    with NO IfcRectangleHollowProfileDef (Gaudi mis-renders it, §6), every item styled, and at least
+    one solid strictly inset on the face plane (a glazing pane within the lining border). Baked /
+    mapped windows have no rect swept solids → fail (the test's teeth)."""
+    solids = _solids(w)
+    if len(solids) < 5:
         return False
-    frame, fp, rects = p
-    if not fp.WallThickness or fp.WallThickness <= 0:
-        return False
-    # at least one rect fully inset inside the lining opening (a glazing pane, not a full-span bar)
-    if not any(pr.XDim < fp.XDim - 1e-9 and pr.YDim < fp.YDim - 1e-9 for _s, pr in rects):
-        return False
+    for s in solids:
+        pr = s.SweptArea
+        # reject hollow profiles (test hollow FIRST — it IS-A IfcRectangleProfileDef, §6) + non-rects
+        if pr.is_a("IfcRectangleHollowProfileDef") or not pr.is_a("IfcRectangleProfileDef"):
+            return False
     styled = {st.Item for st in model.by_type("IfcStyledItem")}
-    if frame not in styled or any(s not in styled for s, _ in rects):
+    if any(s not in styled for s in solids):
         return False
-    return True
+    mn, mx = _window_local_bbox(w)
+    face = [i for i in range(3) if i != int(np.argmin(mx - mn))]   # two face-plane axes
+    for s in solids:
+        smn, smx = _solid_local_bbox(s)
+        if all(smn[i] > mn[i] + 1e-6 and smx[i] < mx[i] - 1e-6 for i in face):
+            return True                                            # a pane inset within the border
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -276,33 +268,56 @@ def layer_C_manipulable_state(c, after):
     return marked
 
 
-def _resize_axis(c, out, base_err, dim, label):
-    """Drive the lining profile's `dim` (XDim/YDim) to 1.5x, keep border constant, confirm the
-    window grew along that axis only — the parametric 'make it wider'."""
-    m = ifcopenshell.open(str(out))
-    for w in _marked(m):
-        p = _parts(w)
-        if p is None:
-            continue
-        frame, fp, rects = p
-        mn0, mx0 = _window_local_bbox(w); ext0 = mx0 - mn0
-        d = int(np.argmin(ext0)); u, v = [i for i in range(3) if i != d]
-        grow_axis = u if dim == "XDim" else v
-        keep_axis = v if dim == "XDim" else u
-        thk0 = fp.WallThickness
-        setattr(fp, dim, getattr(fp, dim) * 1.5)
-        mn1, mx1 = _window_local_bbox(w); ext1 = mx1 - mn1
-        c.check(abs(fp.WallThickness - thk0) < 1e-9, f"[D-{label}] frame border constant: {w.Name!r}")
-        c.check(abs(ext1[grow_axis] / ext0[grow_axis] - 1.5) < 0.05,
-                f"[D-{label}] grew ~1.5x: {w.Name!r}")
-        c.check(abs(ext1[keep_axis] - ext0[keep_axis]) < 1e-3 * max(1.0, ext0[keep_axis]),
-                f"[D-{label}] other axis unchanged: {w.Name!r}")
-    c.check(_nerr(m) <= base_err, f"[D-{label}] no new validate errors")
+def _recipe_window_items(split, width, height):
+    """Build one window via the SHARED recipe (the same code that authored every rebuilt window),
+    axis-aligned (width=X, height=Y, depth=Z), in a throwaway file."""
+    f = ifcopenshell.file(schema="IFC4")
+    return WC.gg.build_window_items(
+        f, width, height, WC.gg.LINING_DEPTH,
+        frame_thk=WC.gg.LINING_THK, glaze_thk=WC.gg.GLAZE_THK, bar_thk=WC.gg.BAR_THK,
+        split=split, center=(0.0, 0.0, WC.gg.LINING_DEPTH / 2.0),
+        depth_dir=(0, 0, 1), width_dir=(1, 0, 0))
+
+
+def _frame_inner_extents(items):
+    """(outer_ext, inner_ext) as (X, Y, Z) arrays: outer = bbox of the 'frame' bars, inner = bbox
+    of the 'pane' solids (None if leafless)."""
+    fo = np.vstack([_solid_corners(s) for s, r in items if r == "frame"])
+    outer = fo.max(0) - fo.min(0)
+    panes = [s for s, r in items if r == "pane"]
+    inner = None
+    if panes:
+        pi = np.vstack([_solid_corners(s) for s in panes])
+        inner = pi.max(0) - pi.min(0)
+    return outer, inner
+
+
+def _parametric_resize_check(c, split, axis, label):
+    """Drive the SHARED recipe 1.5x along one face axis (0=width/X, 1=height/Y) and confirm the
+    lining grows on that axis ONLY, with the frame border held constant — the real 'make it wider'.
+    The frame is now 4 bars, so this tests the generative function (which authored every rebuilt
+    window) rather than mutating a single hollow profile."""
+    base_w, base_h = 1200.0, 1500.0
+    o0, i0 = _frame_inner_extents(_recipe_window_items(split, base_w, base_h))
+    o1, i1 = _frame_inner_extents(_recipe_window_items(
+        split, base_w * (1.5 if axis == 0 else 1.0), base_h * (1.5 if axis == 1 else 1.0)))
+    other = 1 - axis
+    c.check(abs(o1[axis] / o0[axis] - 1.5) < 0.02, f"[D-{label}] lining grew ~1.5x")
+    c.check(abs(o1[other] - o0[other]) < 1e-6 * max(1.0, o0[other]),
+            f"[D-{label}] other axis unchanged")
+    if i0 is not None and i1 is not None:
+        b0 = (o0[axis] - i0[axis]) / 2.0
+        b1 = (o1[axis] - i1[axis]) / 2.0
+        c.check(abs(b1 - b0) < 1e-6 * max(1.0, b0), f"[D-{label}] frame border constant")
 
 
 def layer_D_manipulate(c, out, base_err):
-    _resize_axis(c, out, base_err, "XDim", "width")
-    _resize_axis(c, out, base_err, "YDim", "height")
+    # PARAMETRIC RESIZE — exercise the shared recipe (it authored every rebuilt window) along each
+    # face axis, for single + both split topologies. Border held constant = real 'make it wider'.
+    for split in (None, "V", "H"):
+        tag = split or "single"
+        _parametric_resize_check(c, split, 0, f"width/{tag}")
+        _parametric_resize_check(c, split, 1, f"height/{tag}")
 
     # MOVE — translate placement; window shifts rigidly (size preserved, GlobalId intact)
     m = ifcopenshell.open(str(out))
