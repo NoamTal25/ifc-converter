@@ -41,7 +41,7 @@ import ifcopenshell.util.placement as ifc_placement
 import ifcopenshell.validate as ifc_validate
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
+ROOT = HERE.parent.parent      # repo root (this converter now lives under reference/)
 CONVERTER = HERE / "IFC_door_converter_V1.py"
 FIXTURE_DIRS = [ROOT / "INPUT_IFC_FILES_HERE"]
 

@@ -4,7 +4,8 @@
 building elements into clean, **parametric, manipulable** geometry for FormX — *one converter
 per element type*, designed to compose into a single "fix any building IFC" pipeline. The
 **window converter is the proven reference implementation**; the **door converter is the second**
-(`IFC Door Converter/`, converter v2.1 built). This file is the generalized playbook **and** the
+(`reference/IFC Door Converter v1/`, converter v2.1 built — now **reference v1**, pending a
+golden-template v2). This file is the generalized playbook **and** the
 project memory.
 
 **Status.** Window converter v1: built, **self-contained** (depends on ifcopenshell only),
@@ -174,23 +175,43 @@ plan file (not yet in-repo).
 
 ## 4. Current artifacts (the working set)
 
+**Repo layout (reorganized 2026-06-26):** active converters + the IO folders live at the repo
+root; superseded/reference material lives under `reference/`. See `README.md` for the full tree.
+
+```
+ifc-converter/
+├── IFC Window Converter v2/     ACTIVE — window converter (golden-template-swap, go-forward §2a)
+├── INPUT_IFC_FILES_HERE/        batch input + tester fixture corpus
+├── OUTPUT_IFC_FILES_HERE/       converter outputs (gitignored)
+└── reference/
+    ├── IFC Window Converter v1/        superseded by v2 (measure-and-rebuild)
+    ├── IFC Door Converter v1/          door v2.1 (measure-and-rebuild) — pending a golden-template v2
+    ├── Gal_Similar_Project_Refrences/  Gal's 3 production tools (design template)
+    └── Old Context/                    research archive + golden-spec prototype (§8)
+```
+
 | Path | What it is | Status |
 |---|---|---|
-| `IFC Window Converter/IFC_window_converter_V1.py` | **The reference converter.** Rebuilds each `IfcWindow` into a clean parametric hollow-frame + pane from its own measured bbox; preserves GlobalId/placement/relationships + surface styles; canonical Name + `PredefinedType`; gates non-rectangular + unreadable windows. **Self-contained (ifcopenshell only).** Batch INPUT→OUTPUT `-WIN1`, also single-file args. | Built; all fixtures pass |
-| `IFC Window Converter/IFC window converter algorithm.md` | Living spec (Gal's doc structure). | Current |
-| `IFC Window Converter/test_window_converter.py` + `WINDOW_CONVERTER_TESTING_AGENT.md` | **Automated manipulability tester** + its subagent spec. Runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently (does NOT call the converter's `verify()`), and **actually manipulates each rebuilt window** (parametric resize/move/rotate) — asserting frame border stays constant, moves rigidly, stays valid. **Kernel-free** (analytic bbox from profile+placement — the geom kernel returns nondeterministic empty meshes on fresh solids). Teeth: same test on baked originals MUST fail + pinned `BASELINE_REBUILT`. Run `python3.11 test_window_converter.py`. | 4/4 fixtures pass; teeth verified |
-| `IFC Door Converter/IFC_door_converter_V1.py` | **The door converter (v2.1, modular).** `_classify`→`_rebuild_plan` makes a recipe `{panels, arrangement, folding, hardware}`; `_assemble` composes a parts library (inline lining/pane/divider builders + `_build_handles`/`_door_depth`) into a **single frame layer** — outer lining + panes + dividers — plus a canonical **handle**, per class (French→lining+2 panes+mullion+2 levers, four-fold→4 panes+3 mullions, single-flush→lining+slab+lever, sliding→flush-pull, overhead→stacked+no handle). **Glazed doors measure their member layout 1-1** (border + pane widths + mullion from the transparent sub-solids, `_measure_layout`); opaque fall back to even-tiling. Panel count from the real `OperationType` enum (Name fallback); folding-depth clamp. Faithful (overall dims + glazed layout + colors/props measured/preserved) not pixel-identical. **Swaps only the Body, leaves `FootPrint` untouched** (match by `.id()`); gates non-rectangular + unreadable. **Self-contained.** Batch INPUT→OUTPUT `-D1`. | Built; all 4 fixtures (11 doors) pass `verify()` |
-| `IFC Door Converter/IFC door converter algorithm.md` | Living spec (mirrors the window algorithm doc); Step 2 holds the comprehensive door taxonomy. | Current |
-| `IFC Door Converter/test_door_converter.py` + `DOOR_CONVERTER_TESTING_AGENT.md` | **Automated manipulability tester** + its subagent spec. Mirrors the window tester: runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently (does NOT call `verify()`), and **manipulates each rebuilt door** (resize/move/rotate) — outer lining = the hollow profile (single frame layer; panes/dividers/handles are rect fills), ≥1 inset pane, every part contained + styled; drift on the **face plane** (proud handle/depth-clamp ignored); FootPrint preserved. **Kernel-free** (analytic bbox). Teeth: baked originals MUST fail + pinned `BASELINE_REBUILT`. Run `python3.11 test_door_converter.py`. | 4/4 fixtures pass; teeth verified |
+| `reference/IFC Window Converter v1/IFC_window_converter_V1.py` | **Window v1 (measure-and-rebuild) — superseded by v2, kept as reference (moved under `reference/` 2026-06-26).** Rebuilds each `IfcWindow` into a clean parametric hollow-frame + pane from its own measured bbox; preserves GlobalId/placement/relationships + surface styles; canonical Name + `PredefinedType`; gates non-rectangular + unreadable windows. **Self-contained (ifcopenshell only).** Batch INPUT→OUTPUT `-WIN1`, also single-file args. *(Paths fixed for the deeper location: `_ROOT = _HERE.parent.parent`.)* | Reference; all fixtures pass |
+| `reference/IFC Window Converter v1/IFC window converter algorithm.md` | v1 living spec (Gal's doc structure). | Reference |
+| `reference/IFC Window Converter v1/test_window_converter.py` + `WINDOW_CONVERTER_TESTING_AGENT.md` | v1 **automated manipulability tester** + its subagent spec. Runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently, manipulates each rebuilt window (resize/move/rotate), kernel-free, teeth + pinned `BASELINE_REBUILT`. Run `python3.11 "reference/IFC Window Converter v1/test_window_converter.py"`. | Reference; 4/4 pass; teeth verified |
+| `reference/IFC Door Converter v1/IFC_door_converter_V1.py` | **Door converter v1 (v2.1 algorithm, measure-and-rebuild) — moved under `reference/` 2026-06-26, pending a golden-template v2. Paths fixed for the deeper location (`_ROOT = _HERE.parent.parent`).** Modular: `_classify`→`_rebuild_plan` makes a recipe `{panels, arrangement, folding, hardware}`; `_classify`→`_rebuild_plan` makes a recipe `{panels, arrangement, folding, hardware}`; `_assemble` composes a parts library (inline lining/pane/divider builders + `_build_handles`/`_door_depth`) into a **single frame layer** — outer lining + panes + dividers — plus a canonical **handle**, per class (French→lining+2 panes+mullion+2 levers, four-fold→4 panes+3 mullions, single-flush→lining+slab+lever, sliding→flush-pull, overhead→stacked+no handle). **Glazed doors measure their member layout 1-1** (border + pane widths + mullion from the transparent sub-solids, `_measure_layout`); opaque fall back to even-tiling. Panel count from the real `OperationType` enum (Name fallback); folding-depth clamp. Faithful (overall dims + glazed layout + colors/props measured/preserved) not pixel-identical. **Swaps only the Body, leaves `FootPrint` untouched** (match by `.id()`); gates non-rectangular + unreadable. **Self-contained.** Batch INPUT→OUTPUT `-D1`. | Reference; all 4 fixtures (11 doors) pass `verify()` |
+| `reference/IFC Door Converter v1/IFC door converter algorithm.md` | Door v1 living spec (mirrors the window algorithm doc); Step 2 holds the comprehensive door taxonomy. | Reference |
+| `reference/IFC Door Converter v1/test_door_converter.py` + `DOOR_CONVERTER_TESTING_AGENT.md` | Door v1 **automated manipulability tester** + its subagent spec. Mirrors the window tester: runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently, manipulates each rebuilt door (resize/move/rotate), kernel-free, teeth + pinned `BASELINE_REBUILT`. Run `python3.11 "reference/IFC Door Converter v1/test_door_converter.py"`. | Reference; 4/4 pass; teeth verified |
 | `IFC Window Converter v2/` | **The golden-template-swap window converter (the go-forward §2a method, built 2026-06-25).** Classify→author golden→inject params→swap. Modules: `generate_goldens.py`→`golden_templates/*.ifc` (7 reviewable FormX golden templates), `golden_geometry.py` (the SHARED parametric recipe used by both the goldens and the converter — so output == golden, scaled), `classify_window.py` (Name→recipe, PDF taxonomy), `schema_adapter.py` (the per-IFC2X3/4/4X3 quirk locus), `IFC_window_converter_V2.py` (main, suffix `-WIN2`, swaps Body only, preserves FootPrint, authors `Pset_WindowCommon` + lining/panel props at the **occurrence** level — no 2nd `IfcWindowType`), `test_window_converter_v2.py` + `WINDOW_CONVERTER_V2_TESTING_AGENT.md`, `IFC window converter v2 algorithm.md`. **Self-contained.** | Built; `verify()` ALL PASS on all 4 ADUs (rebuilt 6/5/4/8; trapezoid+skylight+bodiless gated), 0 new validate errors, tester 4/4 (394 checks) teeth-verified. **Awaiting user viewer review of goldens + outputs.** |
-| `Gal_Similar_Project_Refrences/` | Gal's three production tools (walls cleanup / levels organizer / floors definer) + their algorithm.md & testing docs. The **design template** (CLI shape, built-in `verify()`, "only-touch-your-element" discipline, testing methodology). | Reference |
+| `reference/Gal_Similar_Project_Refrences/` | Gal's three production tools (walls cleanup / levels organizer / floors definer) + their algorithm.md & testing docs. The **design template** (CLI shape, built-in `verify()`, "only-touch-your-element" discipline, testing methodology). *(moved under `reference/` 2026-06-26)* | Reference |
 | `INPUT_IFC_FILES_HERE/` | Real FormX ADUs — the converter's batch input **and** the tester's fixture corpus: `LEXFORD_OFFICE-C1` (IFC2X3), `SAN_JUAN_CYPRESS…-W1-L1` (IFC4X3, already through walls+levels), `Sunflower_A` (IFC2X3), `Turnberry…-C1` (IFC4). | Active |
 | `OUTPUT_IFC_FILES_HERE/` | Converter outputs (`-WIN1`/`-WIN2`/`-D1` etc.), gitignored. | — |
-| `Old Context/` | Pre-converter research + the golden-spec prototype (12 authored golden window IFCs + `author_goldens.py` + style taxonomy). **Now the prototype reference for the golden-template-swap pivot** — see §8. | Reference (promoted 2026-06-25) |
+| `reference/Old Context/` | Pre-converter research + the golden-spec prototype (12 authored golden window IFCs + `author_goldens.py` + style taxonomy). **Now the prototype reference for the golden-template-swap pivot** — see §8. *(moved under `reference/` 2026-06-26; §8 path mentions of `Old Context/` now resolve to `reference/Old Context/`.)* | Reference (promoted 2026-06-25) |
 
 ---
 
 ## 5. Door converter — built (v1)
+
+> **Now `reference/IFC Door Converter v1/` (moved 2026-06-26).** This is the **measure-and-rebuild
+> v1** door converter; a golden-template **v2** (the go-forward §2a method, like window v2) is the
+> next door work. Kept as working reference. Run from the new path:
+> `python3.11 "reference/IFC Door Converter v1/test_door_converter.py"`.
 
 Confirmed by the grounding scan: **11 `IfcDoor` across the 4 ADUs** (no `IfcDoorStandardCase`),
 all in feet, schemas IFC2X3/IFC4/IFC4X3. Each door **fills an `IfcOpeningElement`** voided into a

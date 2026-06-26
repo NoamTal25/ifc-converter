@@ -50,7 +50,7 @@ import ifcopenshell.util.placement as ifc_placement
 # The door classification (Name + PredefinedType + glazed flag) is an inline keyword scan — it's
 # cosmetic, so it never affects geometry.
 _HERE = Path(__file__).resolve().parent
-_ROOT = _HERE.parent
+_ROOT = _HERE.parent.parent      # repo root (this converter now lives under reference/)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config

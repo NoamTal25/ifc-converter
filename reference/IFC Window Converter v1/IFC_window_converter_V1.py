@@ -50,7 +50,7 @@ import ifcopenshell.util.placement as ifc_placement
 # The style label + skylight detection are done inline (see _style_token) — they're cosmetic,
 # so a lightweight keyword scan replaces the old classify.py / bakedness.py dependencies.
 _HERE = Path(__file__).resolve().parent
-_ROOT = _HERE.parent
+_ROOT = _HERE.parent.parent      # repo root (this converter now lives under reference/)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config
