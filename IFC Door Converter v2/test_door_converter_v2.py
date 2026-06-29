@@ -41,6 +41,7 @@ from pathlib import Path
 import numpy as np
 import ifcopenshell
 import ifcopenshell.util.placement as ifc_placement
+import ifcopenshell.util.element as ifc_element
 import ifcopenshell.validate as ifc_validate
 
 HERE = Path(__file__).resolve().parent
@@ -261,6 +262,8 @@ def layer_C_manipulable_state(c, after):
     marked = _marked(after)
     for d in marked:
         c.check(_is_manipulable(after, d), f"[C] manipulable state: {d.Name!r}")
+        od = ifc_element.get_psets(d).get("FormX_Door_Window", {}).get("OpeningDirection")
+        c.check(bool(od), f"[C] OpeningDirection present: {d.Name!r} → {od!r}")
     return marked
 
 
@@ -395,7 +398,12 @@ def _formx_type_of(d):
 def _expected_item_count(knobs):
     """Body solid count a recipe must produce — mirrors golden_door_geometry.build_door_items."""
     n = int(knobs.get("panels", 1))
-    items = 4 + n + max(0, n - 1)                 # 4-bar lining + panels + (n-1) mullions
+    if knobs.get("pocket"):
+        items = 3 + 1                             # 3-sided opening lining (head+2 jambs, no sill) + retracted leaf
+    elif (knobs.get("leaf_frame") or knobs.get("sliding")) and n > 0:
+        items = 4 + n * 5                         # outer lining + per-sash/leaf (4 frame bars + 1 infill); no mullion
+    else:
+        items = 4 + n + max(0, n - 1)             # 4-bar lining + panels + (n-1) mullions
     if knobs.get("head_rail") and n > 0:
         items += 1                                # head rail
     if knobs.get("barn_track"):

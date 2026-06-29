@@ -58,25 +58,26 @@ TYPES = {
 
     # ── double-leaf swing ──────────────────────────────────────────────────────
     "DOOR_DOUBLE": _t(
-        "DOOR_DOUBLE.ifc", "Double exterior door — two hinged leaves + central mullion",
-        dict(panels=2, arrangement="side_by_side", glazed=False, handle="lever"),
+        "DOOR_DOUBLE.ifc", "Double exterior door — two framed hinged leaves",
+        dict(panels=2, arrangement="side_by_side", glazed=False, handle="lever", leaf_frame=True),
         "DOUBLE_DOOR_SINGLE_SWING", [("LEFT", "SWINGING"), ("RIGHT", "SWINGING")],
         nom_w=_W_DOUBLE, is_external=True),
     "DOOR_INTERIOR_DOUBLE": _t(
-        "DOOR_INTERIOR_DOUBLE.ifc", "Interior double door — two full-glass leaves + central mullion",
-        dict(panels=2, arrangement="side_by_side", glazed=True, handle="lever"),
+        "DOOR_INTERIOR_DOUBLE.ifc", "Interior double door — two framed full-glass leaves",
+        dict(panels=2, arrangement="side_by_side", glazed=True, handle="lever", leaf_frame=True),
         "DOUBLE_DOOR_SINGLE_SWING", [("LEFT", "SWINGING"), ("RIGHT", "SWINGING")],
         nom_w=_W_DOUBLE),
 
     # ── sliding / pocket ───────────────────────────────────────────────────────
     "DOOR_POCKET": _t(
-        "DOOR_POCKET.ifc", "Pocket door — single leaf sliding into the wall (no exposed track)",
-        dict(panels=1, arrangement="side_by_side", glazed=False, handle="pull"),
-        "SLIDING_TO_LEFT", [("RIGHT", "SLIDING")]),
+        "DOOR_POCKET.ifc", "Pocket door — single leaf retracted into an in-wall pocket",
+        dict(panels=1, arrangement="side_by_side", glazed=False, handle="pull", pocket=True),
+        "SLIDING_TO_LEFT", [("RIGHT", "SLIDING")], nom_w=_W_DOUBLE),
     "DOOR_SLIDING": _t(
-        "DOOR_SLIDING.ifc", "Sliding door — single leaf on a head rail",
-        dict(panels=1, arrangement="side_by_side", glazed=False, handle="pull", head_rail=True),
-        "SLIDING_TO_LEFT", [("RIGHT", "SLIDING")]),
+        "DOOR_SLIDING.ifc", "Sliding door — fixed panel + sliding panel (offset, partially open)",
+        dict(panels=2, arrangement="side_by_side", glazed=True, handle="none", sliding=True),
+        "SLIDING_TO_LEFT", [("LEFT", "SLIDING"), ("RIGHT", "SLIDING")],
+        nom_w=_W_DOUBLE),
 
     # ── barn (exposed track) ───────────────────────────────────────────────────
     "DOOR_BARN": _t(

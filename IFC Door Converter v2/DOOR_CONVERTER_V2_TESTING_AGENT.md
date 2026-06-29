@@ -28,6 +28,7 @@ inputs are never mutated (asserted by sha256 + mtime). Exit 0 = all pass.
 - **C — Manipulable state.** Every rebuilt (marked) door is in the clean parametric state: ≥4 plain
   `IfcRectangleProfileDef` swept solids (a 4-bar lining + any panels/mullions/rails/track/handles),
   with **no** `IfcRectangleHollowProfileDef` (Gaudi mis-renders it — §6), all Body items styled.
+  Also asserts every rebuilt door carries a non-empty `FormX_Door_Window.OpeningDirection` label.
 - **D — Manipulate.** Parametric resize drives the **shared recipe** (the function that authored every
   rebuilt door: build a single-leaf + a 2-leaf type at W vs 1.5·W) → lining grows along that axis only,
   border held constant (measured on the 'frame' bars + 'panel's, so barn track / proud handles don't

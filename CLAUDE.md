@@ -180,8 +180,9 @@ root; superseded/reference material lives under `reference/`. See `README.md` fo
 
 ```
 ifc-converter/
-├── IFC Window Converter v2/     ACTIVE — window converter (golden-template-swap, go-forward §2a)
-├── IFC Door Converter v2/       ACTIVE — door converter (golden-template-swap, go-forward §2a)
+├── IFC Window Converter v2/            ACTIVE — window converter (golden-template-swap, §2a)
+├── IFC Door Converter v2/              ACTIVE — door converter (golden-template-swap, §2a)
+├── IFC Housing Accessories Converter/  ACTIVE — accessories converter (PRESERVE-AND-TAG, §5c)
 ├── INPUT_IFC_FILES_HERE/        batch input + tester fixture corpus
 ├── OUTPUT_IFC_FILES_HERE/       converter outputs (gitignored)
 └── reference/
@@ -201,6 +202,7 @@ ifc-converter/
 | `reference/IFC Door Converter v1/test_door_converter.py` + `DOOR_CONVERTER_TESTING_AGENT.md` | Door v1 **automated manipulability tester** + its subagent spec. Mirrors the window tester: runs the converter on every `INPUT/` fixture in throwaway temps, re-derives invariants independently, manipulates each rebuilt door (resize/move/rotate), kernel-free, teeth + pinned `BASELINE_REBUILT`. Run `python3.11 "reference/IFC Door Converter v1/test_door_converter.py"`. | Reference; 4/4 pass; teeth verified |
 | `IFC Window Converter v2/` | **The golden-template-swap window converter (the go-forward §2a method, built 2026-06-25).** Classify→author golden→inject params→swap. Modules: `generate_goldens.py`→`golden_templates/*.ifc` (7 reviewable FormX golden templates), `golden_geometry.py` (the SHARED parametric recipe used by both the goldens and the converter — so output == golden, scaled), `classify_window.py` (Name→recipe, PDF taxonomy), `schema_adapter.py` (the per-IFC2X3/4/4X3 quirk locus), `IFC_window_converter_V2.py` (main, suffix `-WIN2`, swaps Body only, preserves FootPrint, authors `Pset_WindowCommon` + lining/panel props at the **occurrence** level — no 2nd `IfcWindowType`), `test_window_converter_v2.py` + `WINDOW_CONVERTER_V2_TESTING_AGENT.md`, `IFC window converter v2 algorithm.md`. **Self-contained.** | Built; `verify()` ALL PASS on all 4 ADUs (rebuilt 6/5/4/8; trapezoid+skylight+bodiless gated), 0 new validate errors, tester 4/4 (394 checks) teeth-verified. **Awaiting user viewer review of goldens + outputs.** |
 | `IFC Door Converter v2/` | **The golden-template-swap DOOR converter (go-forward §2a, built 2026-06-26).** Mirrors window v2 module-for-module. Modules: `door_types.py` (the **single source of truth** — 16 FormX door types; both the generator and classifier import it, so the catalog is edited in one place), `generate_goldens.py`→`golden_templates/*.ifc` (**16** reviewable goldens), `golden_door_geometry.py` (the SHARED recipe — `build_door_items` + `dims_in_units(scale)` so output == golden scaled, scale-correct in mm/ft), `classify_door.py` (Name→type per the PDF rules, tuned to real names), `schema_adapter.py` (IfcDoorType/IfcDoorStyle + styles + occurrence psets — never a 2nd type), `IFC_door_converter_V2.py` (main, suffix `-D2`, swaps Body only, preserves FootPrint + real Revit handedness, harvests the baked door's own colours, **folding-depth clamp**, authors `Pset_DoorCommon` + `FormX_Door_Window` + lining/panel props at the **occurrence** level), `test_door_converter_v2.py` (7 layers incl. a classification-multiset teeth layer) + `DOOR_CONVERTER_V2_TESTING_AGENT.md`, `IFC door converter v2 algorithm.md`. **Self-contained.** | Built; goldens 16/16 validate clean; `verify()` ALL PASS on all 4 ADUs (all 11 doors rebuilt 2/1/3/5), 0 new validate errors, tester 4/4 (276 checks) teeth-verified. **Awaiting FormX-architecture viewer review of goldens + outputs.** |
+| `IFC Housing Accessories Converter/` | **The PRESERVE-AND-TAG accessories converter (§5c, built 2026-06-26).** The 3rd converter — deliberately simpler: it does NOT rebuild geometry. For each non-structural accessory (furniture/plants/lights/plumbing/appliances/decor) it keeps the baked mesh VERBATIM and stamps one occurrence-level `FormX_Accessory` pset (AccessoryType + CatalogReference + Movable + Location + SourceClass + FormXConverted) as the move/replace hook. Modules: `accessory_types.py` (single source — ~10 type vocab + allow-list ROOTS + gate keywords + classify maps), `classify_accessory.py` (class-prior then name-refine), `schema_adapter.py` (4 pset-authoring helpers only), `IFC_accessory_converter_V1.py` (main, suffix `-ACC1`, scan 3 roots+dedup by `.id()`, gate trim/bodiless, tag, **PRESERVE-ONLY verify**), `test_accessory_converter_V1.py` (6 layers) + `ACCESSORY_CONVERTER_TESTING_AGENT.md`, `IFC accessory converter algorithm.md`. **Self-contained.** | Built; ZERO visual change; `verify()` ALL PASS on all 4 ADUs (tagged 9/7/36/51, gated 0/0/1/13), 0 new validate errors, idempotent, tester 4/4 (837 checks) teeth-verified. **Awaiting FormX viewer review.** |
 | `reference/Gal_Similar_Project_Refrences/` | Gal's three production tools (walls cleanup / levels organizer / floors definer) + their algorithm.md & testing docs. The **design template** (CLI shape, built-in `verify()`, "only-touch-your-element" discipline, testing methodology). *(moved under `reference/` 2026-06-26)* | Reference |
 | `INPUT_IFC_FILES_HERE/` | Real FormX ADUs — the converter's batch input **and** the tester's fixture corpus: `LEXFORD_OFFICE-C1` (IFC2X3), `SAN_JUAN_CYPRESS…-W1-L1` (IFC4X3, already through walls+levels), `Sunflower_A` (IFC2X3), `Turnberry…-C1` (IFC4). | Active |
 | `OUTPUT_IFC_FILES_HERE/` | Converter outputs (`-WIN1`/`-WIN2`/`-D1`/`-D2` etc.), gitignored. | — |
@@ -301,7 +303,11 @@ Body**.
   substring footguns (`opening` gated by leaf keywords; glazing descriptors like "double glazed"
   scrubbed before leaf-count rules). All-glass donor → synthesize opaque so the frame isn't see-through.
 - **Occurrence-level apparatus, never a 2nd `IfcDoorType`** (§6): `Pset_DoorCommon` (Overall/Rough
-  W·H, Depth) + `FormX_Door_Window` (HandFlipped/FacingFlipped) + `IfcDoorLiningProperties` + per-panel
+  W·H, Depth) + `FormX_Door_Window` (HandFlipped/FacingFlipped + **OpeningDirection** — a
+  human-readable hinge+swing label, e.g. "Right / Inward" / "Sliding Left" / "Folding", derived in
+  `_opening_direction` from the door's effective `OperationType` + FacingFlipped; swing sense
+  defaults Inward until FacingFlipped is derived for real; appended to the EXISTING Pset so
+  relationship counts stay invariant) + `IfcDoorLiningProperties` + per-panel
   `IfcDoorPanelProperties` (lining/panel props authored **value-less** — entity + enums only — matching
   the flush FormX-native reference; dims ride on `Pset_DoorCommon` + `IfcDoor.OverallWidth/Height`, §6).
   **Swaps Body only** (match by `.id()`), preserves FootPrint/identity/relationships. Suffix `-D2`;
@@ -373,6 +379,58 @@ solid bars; user confirmed `-WIN2` renders flush.
 
 **Open:** skylight/trapezoid templates; HandFlipped/FacingFlipped derivation; adjacency-merge;
 pipeline orchestrator. (Gaudi gap + golden/`-WIN2` viewer review now resolved.)
+
+---
+
+## 5c. Accessories converter — built (PRESERVE-AND-TAG, 2026-06-26)
+
+The **third** converter, and the first that is NOT golden-template-swap. It handles the broad,
+heterogeneous set of **non-structural "accessory" objects** in an ADU (furniture, plants, wall
+lights, plumbing fixtures, appliances, decor) and makes each a clean, movable, **replaceable** whole
+object — while keeping it **visually identical** to the export. `IFC Housing Accessories Converter/`.
+
+**Method = preserve-and-tag (deliberately simpler than §2a/§2b).** Per the user's scoping answers
+(2026-06-26): (1) preserve mesh + tag, NOT catalog-swap (no accessory golden catalog exists); (2)
+ALL four categories in-scope; (3) fine-grained ~10-type vocabulary; (4) replace-hook = an
+occurrence-level `FormX_Accessory` Pset. So the converter does NOT touch geometry at all — the
+"parametric" part is a stable identity, the live `ObjectPlacement` (move), a swap hook (replace), and
+a type tag. **HEADLINE GUARANTEE: zero visual change** (the user emphasized "each object shouldn't
+change at all"). The ONLY mutation per accessory is +1 `IfcPropertySet` + 1 `IfcRelDefinesByProperties`
++ 6 `IfcPropertySingleValue`.
+
+- **Grounding (the 4 ADUs):** accessory roots are `IfcFurnishingElement` (+`IfcFurniture` IFC4/4X3),
+  `IfcBuildingElementProxy`, `IfcFlowTerminal` (+`IfcLightFixture`/`IfcSanitaryTerminal` IFC4+).
+  Tagged **9 / 7 / 36 / 51**; gated **0 / 0 / 1 / 13** (Sunflower `Fascia` trim; Turnberry 13
+  `Text:…MS GOTHIC` 2D-annotation proxies). Geometry is almost all `Body/MappedRepresentation`
+  (shared maps — never edited; appearance preserved for free). **No assemblies** anywhere → assembly
+  consolidation moot.
+- **Modules:** `accessory_types.py` (single source of truth — TYPES vocab `PLANT/SEATING/TABLE/
+  STORAGE/BED/APPLIANCE/SANITARY_FIXTURE/LIGHTING/DECOR/OUTDOOR_FURNITURE/GENERIC` + `ROOTS` +
+  `GATE_KEYWORDS` + `SOLID_REP_TYPES` + keyword rule lists); `classify_accessory.py` (**class-prior
+  then name-refine** — class is the strong prior, name refines within; defuses the "Vanity Counter
+  Top w Sink Hole" → SANITARY trap; **BED tested after SEATING+TABLE** so "Bedside Table"→TABLE and
+  "daybed"→SEATING); `schema_adapter.py` (only the 4 schema-stable pset helpers `psv`/`add_pset`/
+  `relate_propertyset`/`_guid`); `IFC_accessory_converter_V1.py` (main, suffix `-ACC1`).
+- **Scan/gate:** scan the 3 roots with `try/except RuntimeError` (subtypes absent in IFC2X3),
+  **dedup by `.id()`** (a light is reachable via both `IfcLightFixture` and `IfcFlowTerminal`). Gate
+  structural-trim names, bodiless/2D-only (no `Body` 3D shaperep), unreadable → preserve + log.
+- **Tag:** `FormX_Accessory` at the OCCURRENCE level (never a 2nd type, §6) — AccessoryType,
+  CatalogReference (Revit family/type Name minus the trailing `:elementid`), Movable=True, Location
+  (Indoor/Outdoor from storey GRADE/name), SourceClass, FormXConverted. **Idempotency = pset
+  presence** (NOT a Description stamp — Name/Description/ObjectType are never touched). IFC2X3 with no
+  `IfcOwnerHistory` → gate the file (don't fabricate an owner / null-owner pset).
+- **PRESERVE-ONLY `verify()` — stricter and INVERTED vs door/window** (which prove geometry
+  *changed*; this proves geometry *preserved everywhere*): all product GlobalIds + placement matrices
+  unchanged; all geometry/style entity-type counts identical; full type histogram identical except
+  +T/+T/+6T; **keystone** per-product `IsDefinedBy` delta = +1 only on newly-tagged; one well-formed
+  pset per accessory; validate errors ≤ source.
+
+Result: `verify()` ALL CHECKS PASSED on all 4 ADUs, 0 new validate errors, idempotent. Tester
+`test_accessory_converter_V1.py` **4/4 fixtures, 837 checks, teeth-verified** (no-op → layer E fails;
+force-all-GENERIC → layer F fails; broken-placement / leaked-pset / stray-geometry → shipped
+`verify()` returns False). **Open (FormX review):** FlowTerminal SANITARY-vs-APPLIANCE split; GENERIC
+as a valid replace-hook; niches → DECOR vs gate; Location heuristic (Turnberry bedside tables are
+contained in the `GRADE` storey → tagged Outdoor).
 
 ---
 
@@ -488,6 +546,9 @@ Hard-won, generalizable lessons (window converter was where they surfaced):
 | **Door v2: author all 16 PDF types as goldens + model canonical handles; clean-&-simplified first pass** | User decisions (2026-06-26): one golden per type (parity); handles authored (door v1 viewer regression was missing handles) though not a FormX param; bifold/combo flat, barn = track+rollers, pocket pull proud, DOOR_OPENING = cased opening — all flagged for the FormX-architecture viewer review to refine. | **Active (set 2026-06-26)** |
 | **Window + Door v2: frame/lining = 4 solid bars, NOT `IfcRectangleHollowProfileDef`** | Gaudi mis-renders the hollow profile (draws its inner opening larger → a uniform pane↔frame "space"); Blender/openIFC render it flush (openIFC *skips* it outright). A 3-window side-by-side test (hollow=gap, 4 bars=flush) confirmed by the user in Gaudi pinned it. Four plain `IfcRectangleProfileDef` bars render flush everywhere. The disproven property hypotheses (valued vs value-less lining/panel props) are logged in §6 so they aren't re-chased. | **Active (set 2026-06-26)** |
 | **Window + Door v2: lining/panel property sets authored VALUE-LESS** | The flush FormX-native reference (`HUDSON_ADU`) carries lining/panel props with all numeric fields null; the dimension contract rides on `IfcWindow/Door.OverallWidth/Height` + `Pset_*`. Value-less matches native and (proven) doesn't affect the Gaudi gap either way. The temporary `FORMX_PROP_MODE` A/B toggle used to test this was removed once geometry was found to be the real cause. | **Active (set 2026-06-26)** |
+| **Accessories converter = PRESERVE-AND-TAG, not golden-template-swap** | User scoping (2026-06-26): no accessory golden catalog exists; "looks the same, just movable + replaceable". So keep the baked mesh verbatim and stamp an occurrence-level `FormX_Accessory` Pset (the swap hook). ZERO visual change is the headline guarantee (user: "each object shouldn't change at all"). Much simpler than windows/doors (no geometry) but broader (many IFC classes). | **Active (set 2026-06-26)** |
+| **Accessories: all 4 categories in-scope, fine-grained vocab, gate only trim + 2D-annotation** | User picked all categories (furniture/decor, plants, lights, plumbing/appliances) + the fine-grained ~10-type vocabulary. Allow-list roots = `IfcFurnishingElement`/`IfcBuildingElementProxy`/`IfcFlowTerminal` (dedup by `.id()`); gate `Fascia`-style trim + bodiless `Text` annotations. Class-prior then name-refine classification. | **Active (set 2026-06-26)** |
+| **Accessories `verify()` is preserve-only (inverted vs door/window) + idempotency via pset-presence** | Door/window verify proves geometry CHANGED; accessories must prove geometry PRESERVED everywhere (geometry/style entity counts identical; per-product `IsDefinedBy` delta +1 only on tagged — the keystone leak check). Marker = the `FormX_Accessory` pset's presence, so `Name`/`Description`/`ObjectType` stay untouched (user requirement: don't clobber Description). | **Active (set 2026-06-26)** |
 | **Match the proven recipe (clean geometry + Name + PredefinedType + relations), NOT rich type/Pset apparatus** | Gal's production tools author zero Psets/element-types; the richer "golden-spec" was Claude-authored, unverified against FormX, and v1 worked without it. Lower risk, more likely to drop into FormX. | **Superseded by the 2026-06-25 pivot** (was the v1 stance) |
 | **Converters are self-contained (ifcopenshell only)** | Removed the window converter's imports of the old `classify.py`/`bakedness.py` (now archived). They were used only for a cosmetic Name + an informational log number — both inlined. New converters should follow suit: no dependency on `Old Context/`. | **Active (set 2026-06-23)** |
 | **Rebuild from the element's OWN measured local bbox; preserve GlobalId + placement in place** | Orientation-agnostic; keeps the element in its opening; only the element's representation/Name/PredefinedType change → the opening/fill/void/containment chain stays valid. | Active |

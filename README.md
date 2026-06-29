@@ -4,9 +4,10 @@ Turn Revit-exported building IFCs into **clean, parametric, manipulable** geomet
 chat-driven design tool can actually edit — *"make this window wider"* needs a live width parameter
 to grab, not a frozen mesh.
 
-This repo ships the **Window Converter (v2)** and the **Door Converter (v2)** as its proven,
-go-forward components — both built on the same golden-template-swap method. They're pieces of a
-larger, composable pipeline (see [The broader picture](#the-broader-picture)).
+This repo ships the **Window Converter (v2)** and the **Door Converter (v2)** — both built on the
+golden-template-swap method — plus the **Housing Accessories Converter**, a lighter preserve-and-tag
+pass for non-structural objects (furniture, plants, lights, fixtures). They're pieces of a larger,
+composable pipeline (see [The broader picture](#the-broader-picture)).
 
 ---
 
@@ -219,6 +220,50 @@ misclassification can't slip through). Spec: [`IFC Door Converter v2/IFC door co
 
 ---
 
+## The Accessories Converter (preserve-and-tag)
+
+The non-structural **accessory** objects in an ADU — furniture, plants, wall lights, plumbing
+fixtures, appliances, decor — don't need their shape rebuilt; they need to be **movable** and
+**replaceable** (swap the whole object for a catalog accessory) while **looking exactly as
+exported**. So this converter is deliberately simpler than the window/door ones: it does **not** touch
+geometry.
+
+> **Zero visual change.** The baked mesh, surface colors, and placement are kept verbatim. The only
+> change per accessory is one occurrence-level `FormX_Accessory` property set — the move/replace hook.
+
+For each accessory it: **scans** the root classes (`IfcFurnishingElement` / `IfcBuildingElementProxy`
+/ `IfcFlowTerminal`, with their subtypes, deduped); **gates** the non-accessories (structural trim
+like `Fascia`, and bodiless 2D-annotation proxies like `Text:…`); **classifies** it (class-prior then
+name-refine) into a FormX accessory type (`PLANT`, `SEATING`, `TABLE`, `STORAGE`, `BED`, `APPLIANCE`,
+`SANITARY_FIXTURE`, `LIGHTING`, `DECOR`, `OUTDOOR_FURNITURE`, `GENERIC`); and **tags** it with the
+`FormX_Accessory` pset (`AccessoryType`, `CatalogReference`, `Movable`, `Location`, `SourceClass`).
+Identity, relationships, and everything else are untouched. Output suffix `-ACC1`.
+
+```
+IFC Housing Accessories Converter/
+├── accessory_types.py          ★ single source — type vocab + allow-list + gate/classify keyword maps
+├── classify_accessory.py         class-prior, then name-refine → accessory type + catalog ref
+├── schema_adapter.py             the 4 schema-stable property-set helpers
+├── IFC_accessory_converter_V1.py main converter + preserve-only verify()
+└── test_accessory_converter_V1.py + ACCESSORY_CONVERTER_TESTING_AGENT.md
+```
+
+**Run it:**
+```bash
+python3.11 "IFC Housing Accessories Converter/IFC_accessory_converter_V1.py"     # batch INPUT → OUTPUT (-ACC1)
+python3.11 "IFC Housing Accessories Converter/test_accessory_converter_V1.py"    # 6-layer tester (teeth)
+```
+
+**Current results:** `verify()` passes on all 4 ADUs (tagged 9 / 7 / 36 / 51; gated 0 / 0 / 1 / 13 —
+a roof fascia and 13 text annotations) with 0 new validate errors, idempotent; the tester passes
+**4/4 fixtures (837 checks)**, teeth verified (a no-op, a misclassification, and a corrupted-geometry
+output all fail). The `verify()` here is *stricter* than the window/door one: it proves geometry is
+**preserved everywhere** (every geometry/style entity count identical, every placement unchanged, the
+property set leaked onto no other element). Spec:
+[`IFC Housing Accessories Converter/IFC accessory converter algorithm.md`](IFC%20Housing%20Accessories%20Converter/IFC%20accessory%20converter%20algorithm.md).
+
+---
+
 ## The broader picture
 
 The window converter is **one component of a composable "fix any building IFC" pipeline** — one
@@ -230,6 +275,7 @@ everything else exactly, leave clean parametric geometry behind.* They chain via
 |---|---|---|
 | **Window converter** | `IFC Window Converter v2/` | ✅ Active — golden-template-swap (this README) |
 | **Door converter** | `IFC Door Converter v2/` | ✅ Active — golden-template-swap, 16 FormX door types (suffix `-D2`) |
+| **Accessories converter** | `IFC Housing Accessories Converter/` | ✅ Active — preserve-and-tag, non-structural objects (suffix `-ACC1`) |
 | Door converter v1 | `reference/IFC Door Converter v1/` | 🔧 Reference — classification-driven, measure-and-rebuild (superseded by v2) |
 | Walls / levels / floors | `reference/Gal_Similar_Project_Refrences/` | Reference — the design template these tools follow |
 | *Pipeline orchestrator* | — | Planned — run the per-element converters in dependency order |
@@ -249,8 +295,9 @@ ifc-converter/
 ├── CLAUDE.md                    project memory / playbook (the "why")
 ├── INPUT_IFC_FILES_HERE/        drop source ADUs here (batch input + test fixtures)
 ├── OUTPUT_IFC_FILES_HERE/       converter outputs (gitignored)
-├── IFC Window Converter v2/     ACTIVE — the window converter
-├── IFC Door Converter v2/       ACTIVE — the door converter (golden-template-swap, 16 types)
+├── IFC Window Converter v2/            ACTIVE — the window converter
+├── IFC Door Converter v2/             ACTIVE — the door converter (golden-template-swap, 16 types)
+├── IFC Housing Accessories Converter/ ACTIVE — the accessories converter (preserve-and-tag, -ACC1)
 └── reference/
     ├── IFC Window Converter v1/        superseded by v2 (measure-and-rebuild)
     ├── IFC Door Converter v1/          door v1 (measure-and-rebuild) — superseded by door v2

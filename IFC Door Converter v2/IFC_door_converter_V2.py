@@ -286,6 +286,15 @@ def reauthor_door(model, door, scale, recipe, owner):
     # handedness we must preserve rather than overwrite with the class-canonical value.
     existing_op = getattr(door, "OperationType", None)
 
+    # human-readable "which way does it open?" — derived from the SAME effective operation
+    # set_door_semantics will keep (preserved Revit handedness, else class-canonical), so the
+    # OpeningDirection label never contradicts the door's final OperationType.
+    if existing_op not in (None, "NOTDEFINED"):
+        eff_op, eff_user = existing_op, None
+    else:
+        eff_op, eff_user = recipe.get("operation"), recipe.get("user_op")
+    opening_dir = _opening_direction(eff_op, eff_user, facing_flipped=False)
+
     # FOLDING-DEPTH CLAMP (§6): a bi-fold door's bbox depth is the folded projection, not the leaf.
     if recipe.get("folding"):
         depth = min(depth, MAX_FOLD_DEPTH_M / scale)
@@ -293,14 +302,22 @@ def reauthor_door(model, door, scale, recipe, owner):
     glass, opaque = _harvest_styles(model, door)            # read BEFORE swapping the Body
     dims = gg.dims_in_units(scale)
 
+    # Which world direction is "up" for the handle? The build's vertical axis is profile+Y =
+    # depth_dir × width_dir (in the door's local frame); map it through the placement and read its
+    # world-Z. Revit exports doors with the local height axis pointing up OR down, so without this
+    # the handle would land near the top on the down-pointing ones (CLAUDE.md / handle-height fix).
+    M = ifc_placement.get_local_placement(door.ObjectPlacement)
+    profile_y = np.cross(np.array(depth_dir, float), np.array(width_dir, float))
+    up_sign = 1.0 if float((M[:3, :3] @ profile_y)[2]) >= 0 else -1.0
+
     items = gg.build_door_items(
         model, width, height, depth, recipe=recipe["recipe"], dims=dims,
-        center=tuple(center), depth_dir=depth_dir, width_dir=width_dir)
+        center=tuple(center), depth_dir=depth_dir, width_dir=width_dir, up_sign=up_sign)
 
     _apply_styles(model, items, glass, opaque)
     _swap_body(model, door, items, _ctx_for_body(door))
 
-    _author_formx_apparatus(model, door, recipe, owner, dims, width, height, depth)
+    _author_formx_apparatus(model, door, recipe, owner, dims, width, height, depth, opening_dir)
 
     door.Name = recipe["name"]
     door.Description = MARK
@@ -313,11 +330,41 @@ def reauthor_door(model, door, scale, recipe, owner):
     return ext
 
 
-def _author_formx_apparatus(model, door, recipe, owner, dims, width, height, depth):
+def _opening_direction(operation, user_op, facing_flipped):
+    """Human-readable "which way does it open?" — a hinge-side + swing-sense PAIR, derived from the
+    door's effective IfcDoorTypeOperationEnum (cheapest reliable signal) plus FacingFlipped.
+
+      * Swing doors → "<Hand> / <Sense>"  e.g. "Right / Outward", "Left / Inward".
+      * Sliding/folding → "<Motion> <Hand>"  e.g. "Sliding Left", "Folding Right".
+      * Revolving / rolling-up / userdefined combos / undefined → a safe descriptive token.
+
+    Hand comes from the …_LEFT/…_RIGHT suffix (incl. OPPOSITE_* and SLIDING_/FOLDING_TO_* variants).
+    Swing sense is a heuristic on FacingFlipped (False ⇒ Inward, the default Revit facing); refine
+    when FacingFlipped is derived for real. Best-effort: always returns a non-empty label."""
+    op = (operation or "").upper()
+    hand = "Left" if "LEFT" in op else "Right" if "RIGHT" in op else None
+    if "SLIDING" in op:
+        return f"Sliding {hand}" if hand else "Sliding"
+    if "FOLDING" in op:
+        return f"Folding {hand}" if hand else "Folding"
+    if "REVOLVING" in op:
+        return "Revolving"
+    if "ROLLINGUP" in op:
+        return "Rolling Up"
+    if op == "USERDEFINED":
+        base = (user_op or "Combo").replace("_", " ").title()
+        return f"{base} {hand}" if hand else base
+    if op in ("", "NOTDEFINED"):
+        return "Unspecified"
+    swing = "Outward" if facing_flipped else "Inward"   # SINGLE_/DOUBLE_SWING_*, SWING_FIXED_*, OPPOSITE_*
+    return f"{hand} / {swing}" if hand else f"Swing / {swing}"
+
+
+def _author_formx_apparatus(model, door, recipe, owner, dims, width, height, depth, opening_dir):
     """Author the FormX param apparatus at the OCCURRENCE level (never a second IfcDoorType):
       * IfcDoorLiningProperties + IfcDoorPanelProperties (the parametric door detail), and
       * Pset_DoorCommon (Overall/Rough W·H, Depth, Reference, IsExternal) + Pset FormX_Door_Window
-        (HandFlipped / FacingFlipped),
+        (HandFlipped / FacingFlipped / OpeningDirection — the human-readable hinge+swing label),
     each linked via IfcRelDefinesByProperties (occurrence-level definitions are many-per-element,
     so no collision with the preserved type relationship).
 
@@ -345,8 +392,9 @@ def _author_formx_apparatus(model, door, recipe, owner, dims, width, height, dep
     ]
     sa.add_pset(model, owner, "Pset_DoorCommon", props, door)
     sa.add_pset(model, owner, "FormX_Door_Window", [
-        sa.psv(model, "HandFlipped",   False, "IfcBoolean"),
-        sa.psv(model, "FacingFlipped", False, "IfcBoolean"),
+        sa.psv(model, "HandFlipped",      False,       "IfcBoolean"),
+        sa.psv(model, "FacingFlipped",    False,       "IfcBoolean"),
+        sa.psv(model, "OpeningDirection", opening_dir, "IfcLabel"),
     ], door)
 
 
