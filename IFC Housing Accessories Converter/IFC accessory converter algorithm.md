@@ -106,7 +106,7 @@ Re-open src + out; key all comparisons by `GlobalId` (ids renumber on write). `T
 4. full type histogram identical EXCEPT `IfcPropertySet` +T, `IfcRelDefinesByProperties` +T,
    `IfcPropertySingleValue` +6T;
 5. **keystone** — per-product `IsDefinedBy` delta = 1 on newly-tagged, 0 everywhere else (catches a
-   pset leaking onto a non-accessory);
+   pset leaking onto a non-accessory);a
 6. exactly one well-formed `FormX_Accessory` pset (6 props) per tagged accessory;
 7. no new validate errors (`errors_after ≤ errors_before`).
 
