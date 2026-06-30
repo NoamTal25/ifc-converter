@@ -324,10 +324,35 @@ doors rebuilt** across the 4 ADUs (2/1/3/5), `verify()` ALL CHECKS PASSED, **0 n
 pins the rebuilt FormX-type multiset (forcing every door to one type FAILS it, where it slipped the
 count-only checks). **Gaudi pane↔frame "space" RESOLVED (2026-06-26, §6):** root cause was the
 `IfcRectangleHollowProfileDef` lining — replaced by 4 solid bars; user confirmed `-D2` renders flush
-in Gaudi. **Open:** FormX-architecture viewer review of the 16 goldens + `-D2` outputs (the agreed
-ground truth); refine the first-pass simplifications (flat bifold/combo panels, barn 1-vs-2-leaf,
-recessed pocket pull — see algorithm §4); HandFlipped/FacingFlipped derivation; adjacency-merge;
-pipeline orchestrator.
+in Gaudi.
+
+**Design enrichment — all remaining types refined (2026-06-26).** Following the per-type Gaudi
+reviews (knob handle; double = two framed leaves; sliding = two overlapping framed sashes mimicking
+the real San Juan Cypress door, ✅ verified; pocket = opening-half lining + retracted leaf), the
+user asked to enrich every remaining type with the components omitted in the first pass. Driven by a
+design-research workflow (9 archetype agents + critic) and implemented in gated waves, the shared
+recipe `golden_door_geometry.build_door_items` now has per-type **modes** (`panelled`, `leaf_frame`
++`muntins`, `sliding`, `pocket`, `combo`, `shower`, `barn`, `casing`) + post-steps (`bifold`
+fold-hardware, `astragal`, `hinges`, handles), composed from reusable helpers (`_panelled_leaf`,
+`_muntin_grid`, `_hinge_stack`, `_border_bars` with a `sill=` toggle). What each type gained is in
+the algorithm doc §4 (rail-and-stile panelled singles/doubles; French divided-lite muntin grid;
+ledged-plank barn with track + strap hangers + floor guide; semi-frameless shower with pivot jamb +
+towel-bar pull; differentiated slide+swing combo; architrave-cased opening; fold-hinge knuckles on
+bifolds). **Discipline preserved:** solid axis-aligned rect boxes only (NO hollow profiles, NO
+diagonals); every linear dim flows from `CANON` mm via `dims_in_units` with positional ratios inlined
+as literals; one canonical value per physical part + per-mode clamps; each mode emits a FIXED solid
+count (clamp, never drop) so the tester's `_expected_item_count` mirrors it; role→colour via the
+single-source `gg.bucket_for`/`GLASS_ROLES` (new roles `sill`/`standoff`/`track_guide`). **Verified:**
+16/16 goldens validate clean with matching counts; tester 4/4 (layer-D border probe switched to
+DOOR_INTERIOR_DOUBLE; `_expected_item_count` extended per mode); converter verify ALL PASS on the 4
+ADUs (0 new validate errors, 0.0 mm face drift); a feet-scale stress test (nominal/narrow/wide) found
+no degenerate dims; an adversarial review workflow (5 lenses → verify) found 2 issues, both fixed
+(barn plank role `panel`→`plank`; combo sliding hardware FRONT-mounted, not proud of both faces). The
+**cross-chat refinement tracker** lives at `IFC Door Converter v2/DOOR_REFINEMENT_CHECKLIST.md`.
+
+**Open:** Gaudi review of the 15 enriched goldens + `-D2` outputs (DOOR_SLIDING already ✅); deferred
+items still flagged — true out-of-plane bifold articulation, recessed pocket pull, the BARN
+1-vs-2-leaf split; HandFlipped/FacingFlipped derivation; adjacency-merge; pipeline orchestrator.
 
 ---
 
@@ -537,6 +562,7 @@ Hard-won, generalizable lessons (window converter was where they surfaced):
 
 | Decision | Rationale | Status |
 |---|---|---|
+| **Door v2: enrich all golden door types with realistic components (modes + helpers in the shared recipe)** | After per-type Gaudi reviews, the user asked to add the components the first pass omitted. Implemented as composable recipe modes (`panelled`/`leaf_frame`+`muntins`/`combo`/`shower`/`barn`/`casing`/`pocket`/`sliding`) + post-steps (`bifold`/`astragal`/`hinges`) from reusable helpers, keeping the hard constraints (solid axis-aligned rects, CANON-mm scale-correctness, fixed per-mode solid count mirrored by the tester, single-source role→bucket). Goldens 16/16 clean, tester 4/4, converter verify ALL PASS, feet-scale stress + adversarial review (2 fixes) clean. See §5b + algorithm §4. | **Active (set 2026-06-26)** |
 | **Go-forward: golden-template-swap supersedes measure-and-rebuild (project-wide)** | Team confirmed FormX has an element-type catalog + golden template IFCs. Classify → instantiate FormX's template + inject params *matches* FormX's catalog; code-authored neutral templates only *approximate* it (window v1 / door v2.1 kept as reference, not deleted). New window converter built fresh under this method. | **Active (set 2026-06-25)** |
 | **Window v2: golden geometry = a SHARED code recipe (not runtime entity-transplant from the .ifc)** | The 7 golden `.ifc`s are the reviewable contract; `golden_geometry.py` authors them AND the converted instances, so output == golden scaled. Robust across IFC2X3/4/4X3 + feet/mm (cross-schema entity transplant is brittle). Modular, with `schema_adapter.py` as the per-IFC-type locus. (User steer: "proceed with what works, but modular + keep per-IFC-type divergence in mind.") | **Active (set 2026-06-25)** |
 | **Window v2: author FormX params at OCCURRENCE level, never a 2nd `IfcWindowType`** | Revit windows are already typed; `IfcRelDefinesByType` is `[0:1]`. `Pset_WindowCommon` + lining/panel props attach via `IfcRelDefinesByProperties` (many-per-element). The PDF contract is the Pset + Name, not a type entity. | **Active (set 2026-06-25)** |

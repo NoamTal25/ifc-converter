@@ -148,19 +148,17 @@ def _build_geometry(f, body, W, H, recipe):
         f, W, H, LINING_DEPTH, recipe=recipe, dims=dims,
         center=(0.0, 0.0, LINING_DEPTH / 2.0), depth_dir=(0, 0, 1), width_dir=(1, 0, 0))
 
-    glass = _surf(f, "Glass", GLASS_RGB, 0.55)
-    frame = _surf(f, "Frame", FRAME_RGB, 0.0)
-    slab  = _surf(f, "Leaf",  SLAB_RGB, 0.0)
-    metal = _surf(f, "Hardware", HW_RGB, 0.0)
+    surf_by_bucket = {
+        "glass": _surf(f, "Glass", GLASS_RGB, 0.55),
+        "frame": _surf(f, "Frame", FRAME_RGB, 0.0),
+        "slab":  _surf(f, "Leaf",  SLAB_RGB, 0.0),
+        "metal": _surf(f, "Hardware", HW_RGB, 0.0),
+    }
     glazed = bool(recipe.get("glazed", False))
 
+    # role → colour bucket is centralised in golden_door_geometry (single source of truth).
     for solid, role in items:
-        if role == "panel":
-            _style_item(f, solid, glass if glazed else slab)
-        elif role in ("handle", "track", "roller"):
-            _style_item(f, solid, metal)
-        else:                                   # frame, mullion, rail
-            _style_item(f, solid, frame)
+        _style_item(f, solid, surf_by_bucket[gg.bucket_for(role, glazed)])
 
     shape = f.create_entity("IfcShapeRepresentation",
                             ContextOfItems=body, RepresentationIdentifier="Body",

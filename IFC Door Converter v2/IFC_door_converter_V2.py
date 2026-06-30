@@ -208,8 +208,11 @@ def _apply_styles(model, items, glass, opaque):
         opaque = sa.build_default_styles(model)[1]      # default opaque 'Door' style
     if glass is None:
         glass = opaque
+    # Glass-eligible roles (panel / glass / lite) take the harvested glass style when the door
+    # actually had glass; every other role (frame / stile / rail / muntin / plank / hardware …) is
+    # opaque. Role→bucket lives in golden_door_geometry (single source of truth).
     for solid, role in items:
-        use_glass = (role == "panel" and glass is not opaque)
+        use_glass = (role in gg.GLASS_ROLES and glass is not opaque)
         model.create_entity("IfcStyledItem", Item=solid, Styles=(glass if use_glass else opaque))
 
 

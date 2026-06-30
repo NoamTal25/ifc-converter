@@ -76,6 +76,44 @@ CANON = dict(
     sash_frame_thk   = 72.0,  # mm: sash stile/rail face-width (= (sash_w − glass_w)/2)
     sash_overlap     = 0.06,  # fraction of inner_w the two sashes overlap at the centre (dimensionless)
     sash_depth_ratio = 0.42,  # each sash's through-wall depth as a fraction of the lining depth (dimensionless)
+    # ── richer-design constants (one canonical value per physical part; per-mode CLAMPS shrink
+    #    them on narrow/short doors — positional RATIOS are inlined as literals in build_door_items,
+    #    NOT stored here, so they never get unit-converted). ──────────────────────────────────────
+    stile_w      = 110.0,   # rail-and-stile leaf stile/member face width (panelled solid leaves)
+    top_rail_h   = 140.0,   # panelled-leaf top rail height
+    lock_rail_h  = 180.0,   # panelled-leaf lock/mid rail height (sits at handle height; widest but bottom)
+    bottom_rail_h= 230.0,   # panelled-leaf bottom rail height (widest)
+    muntin_thk   =  24.0,   # applied glazing-bar (muntin) face width/height (French / divided lites)
+    muntin_proud =   6.0,   # how far a muntin bar stands proud of EACH glass face
+    glass_lock_rail_h = 110.0,  # glazed French leaf mid (lock) cross-rail height
+    hinge_w      =  30.0,   # ONE canonical butt-hinge leaf width (along door width); clamped per mode
+    hinge_h      = 100.0,   # ONE canonical butt-hinge leaf height (along door height); clamped per mode
+    hinge_proud  =  14.0,   # how far a hinge knuckle projects beyond ONE face (single-sided)
+    astragal_w   =  50.0,   # double-door astragal cover-bar face width (over the meeting joint)
+    astragal_proud = 18.0,  # how far the astragal projects beyond ONE (interior) face
+    guide_w      =  90.0,   # bifold top track-guide block width
+    guide_h      =  40.0,   # bifold top track-guide block height (tucks under the head)
+    guide_proud  =  20.0,   # bifold/combo guide block proud of ONE face
+    barn_batten_h =  90.0,  # barn-door horizontal ledger batten height (proud of the front face)
+    barn_strap_w  =  44.0,  # barn-door vertical strap-hanger width
+    casing_band  =  90.0,   # cased-opening architrave band face width (wider than the lining border)
+    casing_reveal=  18.0,   # how far the casing laps onto the wall beyond the opening edge
+    casing_proud =  16.0,   # cased-opening architrave through-wall thickness (proud of each face)
+    # ── shower (semi-frameless) — its own sh_* namespace (no clashes) ──────────────────────────
+    sh_jamb_w    =  28.0,   # slim pivot-side wall jamb face width
+    sh_sill_h    =  32.0,   # low threshold / water-dam bar height
+    sh_glaze_thk =  10.0,   # tempered shower-glass lite thickness
+    sh_edge_gap  =   6.0,   # clearance between glass leading edge and the latch-side opening edge
+    sh_top_gap   =  10.0,   # clearance between glass top and the head (open at top)
+    sh_hinge_w   =  70.0,   # shower pivot hinge-block face width
+    sh_hinge_h   =  55.0,   # shower pivot hinge-block face height
+    sh_hinge_proud = 18.0,  # shower hinge-block proud of EACH glass face
+    sh_pull_w    =  30.0,   # shower towel-bar / ladder-pull bar face width
+    sh_pull_len  = 900.0,   # shower ladder-pull bar length (along height)
+    sh_pull_thk  =  26.0,   # shower ladder-pull bar through-wall thickness
+    sh_pull_edge =  70.0,   # shower pull inset from the latch (leading) edge
+    sh_pull_standoff = 28.0,# shower pull stand-off from the glass face (≤30mm cap)
+    sh_standoff_h =  80.0,  # shower pull standoff-pad height
 )
 
 # Convenience module constants (mm) for callers that author non-geometry props (lining depth etc).
@@ -138,6 +176,36 @@ def _clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
+# ── role → colour bucket (SINGLE source of truth for BOTH the golden generator and the converter) ──
+# Every (solid, role) the recipe emits is coloured by its role's bucket. "panel" is special: it is
+# glass when the door is glazed, else an opaque wood slab — resolved by ``bucket_for(role, glazed)``.
+# To add a new part role, map it here ONCE; both style sites pick it up.
+#   frame  → painted frame/lining colour (lining, stiles, rails, mullions, muntins, casing, astragal)
+#   slab   → opaque wood door body (leaf, plank)
+#   metal  → dark hardware (handle, pull, knob, track, roller, hinge, floor guide, strap)
+#   glass  → transparent glazing (explicit glass/lite roles; also "panel" when glazed)
+_ROLE_BUCKET = {
+    "frame": "frame", "mullion": "frame", "rail": "frame",
+    "stile": "frame", "muntin": "frame", "casing": "frame", "astragal": "frame",
+    "sill": "frame",
+    "plank": "slab",
+    "handle": "metal", "track": "metal", "roller": "metal",
+    "hinge": "metal", "guide": "metal", "strap": "metal", "pull": "metal",
+    "track_guide": "metal", "standoff": "metal",
+    "glass": "glass", "lite": "glass",
+}
+# Roles that should take the GLASS style when the door is glazed (the converter keys on this set).
+GLASS_ROLES = {"panel", "glass", "lite"}
+
+
+def bucket_for(role, glazed=False):
+    """Colour bucket for a part role: 'glass' | 'frame' | 'slab' | 'metal'.
+    ``panel`` resolves to glass when glazed, else slab; everything else is looked up."""
+    if role == "panel":
+        return "glass" if glazed else "slab"
+    return _ROLE_BUCKET.get(role, "frame")
+
+
 def _border_bars(f, w, h, t, center, depth_dir, width_dir, depth, cx=0.0, cy=0.0, sill=True):
     """Solid IfcRectangleProfileDef bars forming a rectangular border of face-width ``t``, centred
     at (cx, cy), each extruded the full ``depth``. With ``sill=True`` (default): four bars — head +
@@ -181,6 +249,83 @@ def _panel_layout(inner_w, n, bar_thk):
             mullions.append(x + bar_thk / 2.0)
             x += bar_thk
     return panes, mullions
+
+
+def _hinge_stack(f, d, cx, inner_h, leaf_dp, center, depth_dir, width_dir, n=3, max_w=None):
+    """``n`` butt-hinge knuckles stacked on a leaf's hinge-side edge at ``cx``, each proud of ONE
+    face only (the swing side). Fixed count = ``n``; sizes clamped, positions clamped inside the
+    leaf, so it never drops a solid. Returns [(solid, "hinge"), …]."""
+    hw = min(d["hinge_w"], 0.8 * max_w) if max_w else d["hinge_w"]
+    hh = _clamp(d["hinge_h"], 0.0, 0.22 * inner_h)
+    hdp = leaf_dp + d["hinge_proud"]                       # proud of ONE face
+    hc = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (d["hinge_proud"] / 2.0))
+    out = []
+    for i in range(n):
+        frac = 0.0 if n == 1 else (-0.34 + 0.68 * i / (n - 1))
+        cy = _clamp(frac * inner_h, -inner_h / 2.0 + hh / 2.0, inner_h / 2.0 - hh / 2.0)
+        out.append((_extrude_along(f, _rect(f, hw, hh, cx=cx, cy=cy),
+                                   hc, depth_dir, width_dir, hdp), "hinge"))
+    return out
+
+
+def _panelled_leaf(f, d, lcx, leaf_w, leaf_h, leaf_dp, glazed, height,
+                   center, depth_dir, width_dir, up_sign):
+    """A rail-and-stile leaf centred at (lcx, 0): 2 stiles + 3 rails (top / lock / bottom) + 2
+    recessed panels (upper / lower). Frame members are the full leaf depth; the panels are ~half
+    depth and centred, so the stiles/rails stand proud and the panels read recessed (no hollow
+    profile, no boolean cut). FIXED 7 solids — dims are clamped to stay positive, never dropped.
+    Returns (items, stile_w) where ``stile_w`` (the clamped stile width) anchors the latch handle."""
+    sw = _clamp(d["stile_w"], 0.0, 0.18 * leaf_w)
+    th = _clamp(d["top_rail_h"], 0.0, 0.18 * leaf_h)
+    bh = _clamp(d["bottom_rail_h"], 0.0, 0.22 * leaf_h)
+    lh = _clamp(d["lock_rail_h"], 0.0, 0.18 * leaf_h)
+    field_w  = leaf_w - 2.0 * sw
+    panel_dp = 0.5 * leaf_dp                              # recessed panel: thinner than the frame
+    items = []
+    for sx in (-(leaf_w - sw) / 2.0, (leaf_w - sw) / 2.0):     # 2 stiles (full leaf height)
+        items.append((_extrude_along(f, _rect(f, sw, leaf_h, cx=lcx + sx),
+                                     center, depth_dir, width_dir, leaf_dp), "stile"))
+    top_inner = leaf_h / 2.0 - th
+    bot_inner = -leaf_h / 2.0 + bh
+    lock_cy = _clamp(up_sign * (-height / 2.0 + d["handle_h"]),
+                     bot_inner + lh, top_inner - lh)           # at handle height, between top/bottom
+    items.append((_extrude_along(f, _rect(f, field_w, th, cx=lcx, cy=leaf_h / 2.0 - th / 2.0),
+                                 center, depth_dir, width_dir, leaf_dp), "rail"))    # top rail
+    items.append((_extrude_along(f, _rect(f, field_w, bh, cx=lcx, cy=-leaf_h / 2.0 + bh / 2.0),
+                                 center, depth_dir, width_dir, leaf_dp), "rail"))    # bottom rail
+    items.append((_extrude_along(f, _rect(f, field_w, lh, cx=lcx, cy=lock_cy),
+                                 center, depth_dir, width_dir, leaf_dp), "rail"))    # lock rail
+    up_cy = (top_inner + (lock_cy + lh / 2.0)) / 2.0
+    up_h  = max(top_inner - (lock_cy + lh / 2.0), 0.02 * leaf_h)
+    lo_cy = ((lock_cy - lh / 2.0) + bot_inner) / 2.0
+    lo_h  = max((lock_cy - lh / 2.0) - bot_inner, 0.02 * leaf_h)
+    for (pcy, ph) in ((up_cy, up_h), (lo_cy, lo_h)):           # 2 recessed panels
+        items.append((_extrude_along(f, _rect(f, field_w, ph, cx=lcx, cy=pcy),
+                                     center, depth_dir, width_dir, panel_dp), "panel"))
+    return items, sw
+
+
+def _muntin_grid(f, d, lcx, gw, gh, panel_th, height, center, depth_dir, width_dir, up_sign):
+    """Divided-lite detail for a glazed leaf (French doors): a mid-height LOCK RAIL (in the glass
+    plane) + an applied muntin grille (1 vertical bar full glass height + 2 horizontal bars full
+    glass width at ±gh/6) standing slightly proud of both glass faces. FIXED 4 solids; slim bars
+    clamped so the grille stays light on small lites. Lock rail = role 'rail', bars = role 'muntin'
+    (both frame-coloured)."""
+    mt   = _clamp(d["muntin_thk"], 0.0, 0.12 * gw)        # vertical-bar width
+    mhz  = _clamp(d["muntin_thk"], 0.0, 0.08 * gh)        # horizontal-bar height
+    mdp  = panel_th + 2.0 * d["muntin_proud"]             # proud of BOTH glass faces
+    lh   = _clamp(d["glass_lock_rail_h"], 0.0, 0.25 * gh)
+    lcy  = _clamp(up_sign * (-height / 2.0 + d["handle_h"]), -gh / 2.0 + lh, gh / 2.0 - lh)
+    return [
+        (_extrude_along(f, _rect(f, gw, lh, cx=lcx, cy=lcy),
+                        center, depth_dir, width_dir, panel_th), "rail"),     # lock rail (glass plane)
+        (_extrude_along(f, _rect(f, mt, gh, cx=lcx),
+                        center, depth_dir, width_dir, mdp), "muntin"),         # vertical bar
+        (_extrude_along(f, _rect(f, gw, mhz, cx=lcx, cy=+gh / 6.0),
+                        center, depth_dir, width_dir, mdp), "muntin"),         # upper horizontal
+        (_extrude_along(f, _rect(f, gw, mhz, cx=lcx, cy=-gh / 6.0),
+                        center, depth_dir, width_dir, mdp), "muntin"),         # lower horizontal
+    ]
 
 
 def _build_handles(f, recipe, d, inner_h, height, depth, bar_thk, panes,
@@ -274,6 +419,12 @@ def build_door_items(f, width, height, depth, *, recipe, dims,
     leaf_frame = bool(recipe.get("leaf_frame", False))
     sliding    = bool(recipe.get("sliding", False))
     pocket     = bool(recipe.get("pocket", False))
+    panelled   = bool(recipe.get("panelled", False))
+    bifold     = bool(recipe.get("bifold", False))
+    combo      = bool(recipe.get("combo", False))
+    shower     = bool(recipe.get("shower", False))
+    barn       = bool(recipe.get("barn", False))
+    casing     = bool(recipe.get("casing", False))
     d          = dims
 
     # Frame border ≤ 1/5 of the smaller face dim; keeps a positive inner opening.
@@ -292,10 +443,10 @@ def build_door_items(f, width, height, depth, *, recipe, dims,
     items = []
     # 1) Outer lining frame — FOUR solid bars (NOT IfcRectangleHollowProfileDef, which Gaudi
     #    mis-renders as a pane↔frame "space" — §6; four plain bars render flush everywhere).
-    #    SKIPPED in pocket mode: a pocket door's measured bbox is ~2× the opening (it includes the
-    #    in-wall pocket), so the lining must frame only the OPENING half, not the whole bbox — the
-    #    pocket branch builds that frame itself.
-    if not pocket:
+    #    SKIPPED in pocket / shower / barn / casing modes (each builds its own lining: pocket frames
+    #    only the opening half; shower is semi-frameless; barn hangs over the opening; casing uses a
+    #    3-sided lining). Every other mode gets the standard 4-bar lining.
+    if not pocket and not shower and not barn and not casing:
         items += _border_bars(f, width, height, frame_thk, center, depth_dir, width_dir, depth)
 
     # 2) Leaves. Authoring modes:
@@ -315,6 +466,7 @@ def build_door_items(f, width, height, depth, *, recipe, dims,
     # `panes` = (centre_x, leaf_or_pane_width) per leaf, used to anchor the handle(s).
     panes = []
     stile_thk = None
+    leaf_depth = panel_th          # through-wall depth of a leaf (for hinge sizing); set per branch
     if n > 0 and pocket:
         # Opening = LEFT half; in-wall pocket = RIGHT half. 3-SIDED lining (head + 2 jambs, NO sill).
         opening_w = width / 2.0
@@ -360,9 +512,169 @@ def build_door_items(f, width, height, depth, *, recipe, dims,
             items.append((_extrude_along(f, _rect(f, gw, gh, cx=cx),
                                          sc, depth_dir, width_dir, panel_th), "panel"))
             panes.append((cx, sash_w))
+    elif casing:
+        # Cased opening (leafless): a 3-sided lining (head + 2 full-height jambs, no sill) PLUS an
+        # architrave/casing trim band (head + 2 legs) on BOTH wall faces — a wider, thinner moulding
+        # that frames the opening, butt-jointed (no mitres → axis-aligned). Fixed 9 solids.
+        items += _border_bars(f, width, height, frame_thk, center, depth_dir, width_dir, depth, sill=False)
+        cb  = _clamp(d["casing_band"], 0.0, 0.16 * min(width, height))
+        cow = width + 2.0 * d["casing_reveal"]
+        cpd = d["casing_proud"]
+        leg_h = height - cb
+        for sgn in (1.0, -1.0):                          # front + back wall faces
+            cc = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * sgn * (depth / 2.0 + cpd / 2.0))
+            items.append((_extrude_along(f, _rect(f, cow, cb, cx=0.0, cy=(height - cb) / 2.0),
+                                         cc, depth_dir, width_dir, cpd), "casing"))     # head casing
+            for lx in (-(cow - cb) / 2.0, (cow - cb) / 2.0):
+                items.append((_extrude_along(f, _rect(f, cb, leg_h, cx=lx, cy=-cb / 2.0),
+                                             cc, depth_dir, width_dir, cpd), "casing"))  # side legs
+    elif shower:
+        # Semi-frameless shower: NO 4-bar lining. A slim pivot JAMB (left) + a low THRESHOLD (full
+        # width) + a large thin GLASS lite filling most of the opening + 3 pivot HINGE blocks + a tall
+        # towel-bar PULL standing off ONE glass face on 2 STANDOFF pads. Fixed 9 solids.
+        jamb_w  = _clamp(d["sh_jamb_w"], 0.0, 0.10 * width)
+        sill_h  = _clamp(d["sh_sill_h"], 0.0, 0.06 * height)
+        glz     = min(d["sh_glaze_thk"], 0.6 * depth)
+        # threshold (full width, low) + pivot jamb (left, threshold→head)
+        items.append((_extrude_along(f, _rect(f, width, sill_h, cx=0.0, cy=-height / 2.0 + sill_h / 2.0),
+                                     center, depth_dir, width_dir, depth), "sill"))
+        items.append((_extrude_along(f, _rect(f, jamb_w, height - sill_h,
+                                     cx=-width / 2.0 + jamb_w / 2.0, cy=sill_h / 2.0),
+                                     center, depth_dir, width_dir, depth), "frame"))
+        # glass lite — between jamb and latch edge, seated on the threshold
+        glass_w = width - jamb_w - d["sh_edge_gap"]
+        glass_h = height - sill_h - d["sh_top_gap"]
+        glass_cx = (jamb_w - d["sh_edge_gap"]) / 2.0
+        glass_cy = (sill_h - d["sh_top_gap"]) / 2.0
+        items.append((_extrude_along(f, _rect(f, glass_w, glass_h, cx=glass_cx, cy=glass_cy),
+                                     center, depth_dir, width_dir, glz), "panel"))
+        # 3 pivot hinge blocks straddling the jamb↔glass joint, proud of both glass faces
+        hjx = -width / 2.0 + jamb_w
+        hh  = min(d["sh_hinge_h"], 0.22 * glass_h)
+        hdp = glz + 2.0 * d["sh_hinge_proud"]
+        for fr in (0.34, 0.0, -0.34):
+            cy = _clamp(glass_cy + fr * glass_h, glass_cy - glass_h / 2.0 + hh / 2.0,
+                        glass_cy + glass_h / 2.0 - hh / 2.0)
+            items.append((_extrude_along(f, _rect(f, d["sh_hinge_w"], hh, cx=hjx, cy=cy),
+                                         center, depth_dir, width_dir, hdp), "hinge"))
+        # towel-bar pull on the latch side, standing off the front glass face on 2 standoff pads
+        pull_len = min(d["sh_pull_len"], 0.55 * height)
+        pull_cx  = width / 2.0 - d["sh_pull_edge"] - d["sh_pull_w"] / 2.0
+        pull_c   = tuple(np.asarray(center, float) + np.asarray(depth_dir, float)
+                         * (glz / 2.0 + d["sh_pull_standoff"] + d["sh_pull_thk"] / 2.0))
+        items.append((_extrude_along(f, _rect(f, d["sh_pull_w"], pull_len, cx=pull_cx, cy=glass_cy),
+                                     pull_c, depth_dir, width_dir, d["sh_pull_thk"]), "handle"))
+        so_c = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (glz / 2.0 + d["sh_pull_standoff"] / 2.0))
+        soh  = min(d["sh_standoff_h"], 0.30 * pull_len)
+        for sfr in (0.5, -0.5):
+            items.append((_extrude_along(f, _rect(f, d["sh_pull_w"], soh,
+                                         cx=pull_cx, cy=glass_cy + sfr * (pull_len - soh)),
+                                         so_c, depth_dir, width_dir, d["sh_pull_standoff"]), "standoff"))
+    elif n > 0 and barn:
+        # Barn door: ledged plank leaf/leaves (slab + 3 horizontal ledger battens, proud of the
+        # front — NO diagonal brace, axis-aligned only) hung from an overhead TRACK band (+2 end
+        # stops) by 2 vertical STRAP hangers per leaf, with a floor GUIDE and a bar PULL. No lining.
+        # Fixed 7 solids per leaf + 4 shared (track + 2 stops + guide). Authors its own pull.
+        track_thk = _clamp(d["rail_thk"], 0.0, 0.12 * height)
+        body_h, body_cy = height - track_thk, -track_thk / 2.0
+        body_top = height / 2.0 - track_thk
+        bp = 1.8 * d["hw_proud"]                          # face stand-off of the surface-mounted barn parts
+        def front_c(dp):
+            return tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (panel_th / 2.0 + dp / 2.0))
+        leaf_w  = width / n
+        bat_h   = _clamp(d["barn_batten_h"], 0.0, 0.16 * body_h)
+        for i in range(n):
+            lcx = -width / 2.0 + leaf_w * (i + 0.5)
+            items.append((_extrude_along(f, _rect(f, leaf_w, body_h, cx=lcx, cy=body_cy),
+                                         center, depth_dir, width_dir, panel_th), "plank"))   # plank body
+            for fr in (0.38, 0.0, -0.38):                 # 3 ledger battens, proud of the front
+                cy = _clamp(body_cy + fr * body_h, body_cy - body_h / 2.0 + bat_h / 2.0,
+                            body_cy + body_h / 2.0 - bat_h / 2.0)
+                items.append((_extrude_along(f, _rect(f, leaf_w, bat_h, cx=lcx, cy=cy),
+                                             front_c(bp), depth_dir, width_dir, bp), "plank"))
+            strap_bot = body_top - 0.12 * body_h          # 2 strap hangers (door top → track)
+            strap_h, strap_cy = height / 2.0 - strap_bot, (height / 2.0 + strap_bot) / 2.0
+            for sx in (lcx - leaf_w / 4.0, lcx + leaf_w / 4.0):
+                items.append((_extrude_along(f, _rect(f, d["barn_strap_w"], strap_h, cx=sx, cy=strap_cy),
+                                             front_c(bp), depth_dir, width_dir, bp), "strap"))
+            pt = min(d["pull_thk"], 0.4 * leaf_w)         # bar pull on the leading edge
+            items.append((_extrude_along(f, _rect(f, pt, d["pull_len"],
+                                         cx=lcx + leaf_w / 2.0 - d["edge_inset"] - pt / 2.0, cy=body_cy),
+                                         center, depth_dir, width_dir, panel_th + 2.0 * d["hw_proud"]), "pull"))
+        items.append((_extrude_along(f, _rect(f, width, track_thk, cx=0.0, cy=height / 2.0 - track_thk / 2.0),
+                                     front_c(bp), depth_dir, width_dir, bp), "track"))   # overhead track band
+        for ex in (-width / 2.0 + track_thk / 2.0, width / 2.0 - track_thk / 2.0):       # 2 end stops
+            items.append((_extrude_along(f, _rect(f, track_thk, track_thk * 1.6, cx=ex, cy=height / 2.0 - track_thk * 0.8),
+                                         front_c(bp * 1.2), depth_dir, width_dir, bp * 1.2), "track"))
+        ghg = _clamp(d["guide_h"], 0.0, 0.05 * height)                                    # floor guide
+        items.append((_extrude_along(f, _rect(f, leaf_w * 0.5, ghg, cx=0.0, cy=-height / 2.0 + ghg / 2.0),
+                                     center, depth_dir, width_dir, panel_th + 2.0 * d["hw_proud"]), "guide"))
+    elif n > 0 and combo:
+        # Differentiated slide+swing combo: a central divider, a framed SLIDING SASH on the left
+        # (track + 2 rollers + floor guide + bar pull, on a front depth track) and a panelled SWING
+        # leaf on the right (rails + recessed panels + knob + 2 hinges). Authors its own hardware
+        # (handle='none' in the recipe), so the generic handle/hinge steps stay no-ops. Fixed 25 solids.
+        div_thk  = _clamp(d["bar_thk"], 0.0, 0.3 * inner_w)
+        half_w   = (inner_w - div_thk) / 2.0
+        left_cx  = -(div_thk / 2.0 + half_w / 2.0)
+        right_cx =  (div_thk / 2.0 + half_w / 2.0)
+        items.append((_extrude_along(f, _rect(f, div_thk, inner_h, cx=0.0),
+                                     center, depth_dir, width_dir, depth), "mullion"))
+        # ── left: sliding sash on a front depth track ──
+        sash_thk = _clamp(d["sash_frame_thk"], 0.0, 0.3 * half_w)
+        sash_dp  = _clamp(d["sash_depth_ratio"] * depth, panel_th, 0.48 * depth)
+        front_c  = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (depth - sash_dp) / 2.0)
+        items += _border_bars(f, half_w, inner_h, sash_thk, front_c, depth_dir, width_dir, sash_dp, cx=left_cx)
+        items.append((_extrude_along(f, _rect(f, half_w - 2.0 * sash_thk, inner_h - 2.0 * sash_thk, cx=left_cx),
+                                     front_c, depth_dir, width_dir, panel_th), "panel"))
+        # Sliding hardware is FRONT-mounted (matches the front-track sash): each part spans from the
+        # lining centre plane out to hw_proud beyond the FRONT face, so nothing pokes out the back.
+        hw_dp = depth / 2.0 + d["hw_proud"]
+        hw_c  = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (hw_dp / 2.0))
+        track_w = min(half_w * 1.05, 0.95 * width)
+        track_y = inner_h / 2.0 + rail_thk / 2.0
+        items.append((_extrude_along(f, _rect(f, track_w, rail_thk, cx=left_cx, cy=track_y),
+                                     hw_c, depth_dir, width_dir, hw_dp), "track"))
+        for rx in (left_cx - half_w / 2.0 + sash_thk, left_cx + half_w / 2.0 - sash_thk):
+            items.append((_extrude_along(f, _rect(f, d["roller_w"], d["roller_h"], cx=rx, cy=track_y - d["roller_h"] / 2.0),
+                                         hw_c, depth_dir, width_dir, hw_dp), "roller"))
+        ghg = _clamp(d["guide_h"], 0.0, 0.1 * inner_h)
+        items.append((_extrude_along(f, _rect(f, half_w, ghg, cx=left_cx, cy=-inner_h / 2.0 + ghg / 2.0),
+                                     hw_c, depth_dir, width_dir, hw_dp), "guide"))
+        pt = min(d["pull_thk"], 0.5 * half_w)
+        px = _clamp(left_cx - half_w / 2.0 + sash_thk + d["edge_inset"] + pt / 2.0,
+                    left_cx - half_w / 2.0 + pt / 2.0, left_cx + half_w / 2.0 - pt / 2.0)
+        items.append((_extrude_along(f, _rect(f, pt, d["pull_len"], cx=px, cy=0.0),
+                                     hw_c, depth_dir, width_dir, hw_dp), "pull"))
+        # ── right: panelled swing leaf + knob + 2 hinges ──
+        leaf_items, sw = _panelled_leaf(f, d, right_cx, half_w, inner_h, panel_th, False, height,
+                                        center, depth_dir, width_dir, up_sign)
+        items += leaf_items
+        kw  = min(d["knob_w"], 0.5 * half_w)
+        kcy = _clamp(up_sign * (-height / 2.0 + d["handle_h"]),
+                     -inner_h / 2.0 + d["knob_h"], inner_h / 2.0 - d["knob_h"])
+        items.append((_extrude_along(f, _rect(f, kw, d["knob_h"], cx=right_cx - half_w / 2.0 + sw / 2.0, cy=kcy),
+                                     center, depth_dir, width_dir, depth + 2.0 * d["knob_proud"]), "handle"))
+        items += _hinge_stack(f, d, right_cx + half_w / 2.0 - d["hinge_w"] / 2.0, inner_h, panel_th,
+                              center, depth_dir, width_dir, n=2, max_w=sw)
+    elif n > 0 and panelled:
+        # Rail-and-stile PANELLED leaves (single + double swing): each leaf is a 7-solid joinery
+        # frame (2 stiles + 3 rails + 2 recessed panels). Laid side by side; the abutting stiles
+        # read as the centre divider on a double. The leaf is the slab thickness, centred in depth.
+        leaf_w = inner_w / n
+        for i in range(n):
+            lcx = -inner_w / 2.0 + leaf_w * (i + 0.5)
+            leaf_items, stile_thk = _panelled_leaf(f, d, lcx, leaf_w, inner_h, panel_th, glazed,
+                                                   height, center, depth_dir, width_dir, up_sign)
+            items += leaf_items
+            panes.append((lcx, leaf_w))
     elif n > 0 and leaf_frame:
-        # leaf frame ≤ ~1/3 of the per-leaf width so the inset infill stays positive on narrow doors
+        # Each leaf = its own 4-bar stile/rail frame + inset infill (glass or slab), laid edge-to-edge.
+        # With ``muntins`` (French interior doubles) each glazed lite also gets a lock rail + applied
+        # divided-lite grille. The leaf frame spans the full lining depth → hinges use that depth.
         stile_thk = _clamp(d["leaf_frame_thk"], 0.0, 0.35 * (inner_w / n))
+        leaf_depth = depth
+        muntins = bool(recipe.get("muntins"))
         leaf_w = inner_w / n
         for i in range(n):
             lcx = -inner_w / 2.0 + leaf_w * (i + 0.5)
@@ -372,6 +684,9 @@ def build_door_items(f, width, height, depth, *, recipe, dims,
             gh = inner_h - 2.0 * stile_thk
             items.append((_extrude_along(f, _rect(f, gw, gh, cx=lcx),
                                          center, depth_dir, width_dir, panel_th), "panel"))
+            if muntins:
+                items += _muntin_grid(f, d, lcx, gw, gh, panel_th, height,
+                                      center, depth_dir, width_dir, up_sign)
             panes.append((lcx, leaf_w))
     elif n > 0:
         panes, mullions = _panel_layout(inner_w, n, bar_thk)
@@ -388,21 +703,47 @@ def build_door_items(f, width, height, depth, *, recipe, dims,
         items.append((_extrude_along(f, _rect(f, inner_w, rail_thk, cy=ry),
                                      center, depth_dir, width_dir, depth), "rail"))
 
-    # 4) Barn track — an exposed bar ABOVE the leaf (proud of the face) + two roller tabs that
-    #    overlap the track vertically so they read as hanging from it.
-    if recipe.get("barn_track"):
-        track_w  = width * d["track_overhang"]
-        track_y  = height / 2.0 + rail_thk
-        track_dp = depth + 2.0 * d["hw_proud"]
-        items.append((_extrude_along(f, _rect(f, track_w, rail_thk, cy=track_y),
-                                     center, depth_dir, width_dir, track_dp), "track"))
-        roller_h = d["roller_h"]
-        roller_y = track_y - roller_h / 2.0          # roller top reaches into the track band
-        for rx in (-width / 4.0, width / 4.0):
-            items.append((_extrude_along(f, _rect(f, d["roller_w"], roller_h, cx=rx, cy=roller_y),
-                                         center, depth_dir, width_dir, track_dp), "roller"))
+    # 4b) Bifold folding hardware — what makes the (coplanar, leaf-framed) leaves read as a folding
+    #     door: a pair of hinge knuckles (upper + lower) straddling each leaf-to-leaf joint, plus one
+    #     top track-guide block riding under the head over the active leaf. All proud of ONE face.
+    if bifold and n >= 2:
+        leaf_w = inner_w / n
+        hh  = _clamp(d["hinge_h"], 0.0, 0.22 * inner_h)
+        hdp = depth + d["hinge_proud"]
+        hc  = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (d["hinge_proud"] / 2.0))
+        for j in range(1, n):                              # interior joints
+            jx = -inner_w / 2.0 + leaf_w * j
+            for fr in (0.30, -0.30):                       # upper + lower knuckle
+                cy = _clamp(fr * inner_h, -inner_h / 2.0 + hh / 2.0, inner_h / 2.0 - hh / 2.0)
+                items.append((_extrude_along(f, _rect(f, d["hinge_w"], hh, cx=jx, cy=cy),
+                                             hc, depth_dir, width_dir, hdp), "hinge"))
+        gw  = _clamp(d["guide_w"], 0.0, 0.5 * leaf_w)
+        gh  = _clamp(d["guide_h"], 0.0, 0.5 * frame_thk)
+        gdp = depth + d["guide_proud"]
+        gc  = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (d["guide_proud"] / 2.0))
+        gx  = -inner_w / 2.0 + leaf_w * (n - 1 + 0.5)      # active (rightmost) leaf centre
+        items.append((_extrude_along(f, _rect(f, gw, gh, cx=gx, cy=inner_h / 2.0 - gh / 2.0),
+                                     gc, depth_dir, width_dir, gdp), "track_guide"))
 
-    # 5) Canonical handle(s). (Pocket mode authored its own leading-edge pull above.)
+    # 5) Astragal — a cover bar over the meeting joint of a double, proud of one (interior) face.
+    if recipe.get("astragal") and n >= 2 and panes:
+        aw  = _clamp(d["astragal_w"], 0.0, 0.12 * (inner_w / n))
+        adp = depth + d["astragal_proud"]                # proud of ONE face
+        ac  = tuple(np.asarray(center, float) + np.asarray(depth_dir, float) * (d["astragal_proud"] / 2.0))
+        items.append((_extrude_along(f, _rect(f, aw, inner_h, cx=0.0),
+                                     ac, depth_dir, width_dir, adp), "astragal"))
+
+    # 6) Hinges — 3 butt-hinge knuckles on each leaf's OUTER (hinge-side) edge, proud of one face.
+    #    Makes a swing leaf read as a hung door. ``hinges`` opt-in per recipe; uses the leaf list in
+    #    ``panes`` so it works for the panelled single/double, the flush slab, and the French leaves.
+    if recipe.get("hinges") and panes:
+        for (lcx, lpw) in panes:
+            side = -1.0 if lcx <= 1e-9 else 1.0          # hinge on the OUTER edge (away from centre)
+            hx = lcx + side * (lpw / 2.0 - d["hinge_w"] / 2.0)
+            items += _hinge_stack(f, d, hx, inner_h, leaf_depth, center, depth_dir, width_dir,
+                                  n=3, max_w=(stile_thk if stile_thk else lpw))
+
+    # 7) Canonical handle(s). (Pocket mode authored its own leading-edge pull above.)
     if not pocket:
         items += _build_handles(f, recipe, d, inner_h, height, depth, bar_thk, panes,
                                 center, depth_dir, width_dir, stile_thk=stile_thk, up_sign=up_sign)

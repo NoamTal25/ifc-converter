@@ -44,27 +44,31 @@ def _t(filename, description, recipe, operation, panel_positions, *,
 TYPES = {
     # ── single-leaf swing slabs ────────────────────────────────────────────────
     "DOOR_SINGLE": _t(
-        "DOOR_SINGLE.ifc", "Single swing door — one hinged leaf",
-        dict(panels=1, arrangement="side_by_side", glazed=False, handle="lever"),
+        "DOOR_SINGLE.ifc", "Single swing door — panelled (rail-and-stile) hinged leaf",
+        dict(panels=1, arrangement="side_by_side", glazed=False, handle="lever",
+             panelled=True, hinges=True),
         "SINGLE_SWING_LEFT", [("RIGHT", "SWINGING")], is_external=True),
     "DOOR_INTERIOR_SINGLE": _t(
-        "DOOR_INTERIOR_SINGLE.ifc", "Interior single swing door — one hinged leaf",
-        dict(panels=1, arrangement="side_by_side", glazed=False, handle="lever"),
+        "DOOR_INTERIOR_SINGLE.ifc", "Interior single swing door — panelled (rail-and-stile) leaf",
+        dict(panels=1, arrangement="side_by_side", glazed=False, handle="lever",
+             panelled=True),
         "SINGLE_SWING_LEFT", [("RIGHT", "SWINGING")]),
     "DOOR_SINGLE_FLUSH": _t(
-        "DOOR_SINGLE_FLUSH.ifc", "Single flush door — one plain hinged leaf",
-        dict(panels=1, arrangement="side_by_side", glazed=False, handle="lever"),
+        "DOOR_SINGLE_FLUSH.ifc", "Single flush door — one plain hinged slab leaf",
+        dict(panels=1, arrangement="side_by_side", glazed=False, handle="lever", hinges=True),
         "SINGLE_SWING_LEFT", [("RIGHT", "SWINGING")]),
 
     # ── double-leaf swing ──────────────────────────────────────────────────────
     "DOOR_DOUBLE": _t(
-        "DOOR_DOUBLE.ifc", "Double exterior door — two framed hinged leaves",
-        dict(panels=2, arrangement="side_by_side", glazed=False, handle="lever", leaf_frame=True),
+        "DOOR_DOUBLE.ifc", "Double exterior door — two panelled leaves + astragal",
+        dict(panels=2, arrangement="side_by_side", glazed=False, handle="lever",
+             panelled=True, hinges=True, astragal=True),
         "DOUBLE_DOOR_SINGLE_SWING", [("LEFT", "SWINGING"), ("RIGHT", "SWINGING")],
         nom_w=_W_DOUBLE, is_external=True),
     "DOOR_INTERIOR_DOUBLE": _t(
-        "DOOR_INTERIOR_DOUBLE.ifc", "Interior double door — two framed full-glass leaves",
-        dict(panels=2, arrangement="side_by_side", glazed=True, handle="lever", leaf_frame=True),
+        "DOOR_INTERIOR_DOUBLE.ifc", "Interior double door — two divided-lite glass French leaves",
+        dict(panels=2, arrangement="side_by_side", glazed=True, handle="lever",
+             leaf_frame=True, muntins=True, hinges=True),
         "DOUBLE_DOOR_SINGLE_SWING", [("LEFT", "SWINGING"), ("RIGHT", "SWINGING")],
         nom_w=_W_DOUBLE),
 
@@ -81,59 +85,62 @@ TYPES = {
 
     # ── barn (exposed track) ───────────────────────────────────────────────────
     "DOOR_BARN": _t(
-        "DOOR_BARN.ifc", "Barn door — two leaves on an exposed overhead track",
-        dict(panels=2, arrangement="side_by_side", glazed=False, handle="pull", barn_track=True),
+        "DOOR_BARN.ifc", "Barn door — two ledged plank leaves on an exposed overhead track",
+        dict(panels=2, arrangement="side_by_side", glazed=False, handle="none", barn=True),
         "DOUBLE_DOOR_SLIDING", [("LEFT", "SLIDING"), ("RIGHT", "SLIDING")],
         nom_w=_W_DOUBLE, is_external=True),
     "DOOR_SINGLE_BARN": _t(
-        "DOOR_SINGLE_BARN.ifc", "Single barn door — one leaf on an exposed overhead track",
-        dict(panels=1, arrangement="side_by_side", glazed=False, handle="pull", barn_track=True),
+        "DOOR_SINGLE_BARN.ifc", "Single barn door — one ledged plank leaf on an exposed overhead track",
+        dict(panels=1, arrangement="side_by_side", glazed=False, handle="none", barn=True),
         "SLIDING_TO_LEFT", [("RIGHT", "SLIDING")], nom_w=_W_BARN, is_external=True),
 
     # ── shower (glazed) ────────────────────────────────────────────────────────
     "DOOR_SHOWER": _t(
-        "DOOR_SHOWER.ifc", "Shower door — single glazed leaf in a slim frame",
-        dict(panels=1, arrangement="side_by_side", glazed=True, handle="pull"),
+        "DOOR_SHOWER.ifc", "Shower door — semi-frameless glass (pivot jamb + threshold + towel pull)",
+        dict(panels=1, arrangement="side_by_side", glazed=True, handle="none", shower=True),
         "SINGLE_SWING_LEFT", [("RIGHT", "SWINGING")]),
 
     # ── bifolding ──────────────────────────────────────────────────────────────
     "DOOR_BIFOLDING_GLASS": _t(
-        "DOOR_BIFOLDING_GLASS.ifc", "Bifolding glass door — four glazed leaves (flat, first pass)",
-        dict(panels=4, arrangement="side_by_side", glazed=True, handle="pull"),
+        "DOOR_BIFOLDING_GLASS.ifc", "Bifolding glass door — four framed glazed leaves + fold hinges",
+        dict(panels=4, arrangement="side_by_side", glazed=True, handle="pull",
+             leaf_frame=True, bifold=True),
         "DOUBLE_DOOR_FOLDING",
         [("LEFT", "FOLDING"), ("MIDDLE", "FOLDING"), ("MIDDLE", "FOLDING"), ("RIGHT", "FOLDING")],
         nom_w=_W_BIFOLD, folding=True, is_external=True),
     "DOOR_INTERIOR_BIFOLDING_2_PANEL": _t(
         "DOOR_INTERIOR_BIFOLDING_2_PANEL.ifc",
-        "Interior bifolding door — two folding leaves (flat, first pass)",
-        dict(panels=2, arrangement="side_by_side", glazed=False, handle="pull"),
+        "Interior bifolding door — two framed folding leaves + fold hinges",
+        dict(panels=2, arrangement="side_by_side", glazed=False, handle="pull",
+             leaf_frame=True, bifold=True),
         "DOUBLE_DOOR_FOLDING", [("LEFT", "FOLDING"), ("RIGHT", "FOLDING")], folding=True),
 
     # ── combos (split leaf, first pass) ────────────────────────────────────────
     "DOOR_SLIDE_AND_SWING": _t(
         "DOOR_SLIDE_AND_SWING.ifc",
-        "Slide-and-swing door — one sliding + one swing leaf (split, first pass)",
-        dict(panels=2, arrangement="side_by_side", glazed=False, handle="lever"),
+        "Slide-and-swing door — a sliding framed sash + a panelled swing leaf",
+        dict(panels=2, arrangement="side_by_side", glazed=False, handle="none", combo=True),
         "USERDEFINED", [("LEFT", "SLIDING"), ("RIGHT", "SWINGING")],
         nom_w=_W_DOUBLE, user_op="SLIDE_AND_SWING", is_external=True),
     "DOOR_SLIDING_SWING_COMBO": _t(
         "DOOR_SLIDING_SWING_COMBO.ifc",
-        "Sliding-swing combo door — one sliding + one swing leaf (split, first pass)",
-        dict(panels=2, arrangement="side_by_side", glazed=False, handle="lever"),
+        "Sliding-swing combo door — a sliding framed sash + a panelled swing leaf",
+        dict(panels=2, arrangement="side_by_side", glazed=False, handle="none", combo=True),
         "USERDEFINED", [("LEFT", "SLIDING"), ("RIGHT", "SWINGING")],
         nom_w=_W_DOUBLE, user_op="SLIDING_SWING_COMBO", is_external=True),
     "DOOR_BIFOLDING_SWING_COMBO": _t(
         "DOOR_BIFOLDING_SWING_COMBO.ifc",
-        "Bifolding-swing combo — two folding + one swing leaf (flat, first pass)",
-        dict(panels=3, arrangement="side_by_side", glazed=False, handle="pull"),
+        "Bifolding-swing combo — three framed folding leaves + fold hinges",
+        dict(panels=3, arrangement="side_by_side", glazed=False, handle="pull",
+             leaf_frame=True, bifold=True),
         "DOUBLE_DOOR_FOLDING",
         [("LEFT", "FOLDING"), ("MIDDLE", "FOLDING"), ("RIGHT", "SWINGING")],
         nom_w=_W_BIFOLD, folding=True, is_external=True),
 
     # ── leafless cased opening ─────────────────────────────────────────────────
     "DOOR_OPENING": _t(
-        "DOOR_OPENING.ifc", "Cased opening — lining frame only, no leaf",
-        dict(panels=0, arrangement="side_by_side", glazed=False, handle="none"),
+        "DOOR_OPENING.ifc", "Cased opening — 3-sided lining + architrave casing (both faces), no leaf",
+        dict(panels=0, arrangement="side_by_side", glazed=False, handle="none", casing=True),
         "NOTDEFINED", []),
 }
 

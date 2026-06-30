@@ -104,29 +104,64 @@ by the caller (axis-aligned for the golden, measured axes for an instance).
   the inner height) of width `frame_thk` — **NOT** an `IfcRectangleHollowProfileDef`. Gaudi mis-renders
   the hollow profile (its inner opening renders larger than authored → a uniform pane↔frame "space";
   Blender/openIFC render it flush). Four plain bars render flush everywhere — see CLAUDE.md §6.
-- **Panels** = inset `IfcRectangleProfileDef` leaves; **mullions** between panels; **head rail**
-  (sliding) / **barn track + 2 rollers** (barn); **handles** (lever / pull) as boxes proud of both
-  faces. `panels=0` → lining only (cased opening).
+- **Per-type modes** select the leaf construction via recipe knobs (each emits a FIXED solid count;
+  dims clamp, never drop, so `_expected_item_count` is a clean function of the knobs):
+  `pocket` · `shower` · `barn` · `casing` · `combo` · `panelled` (rail-and-stile) ·
+  `leaf_frame` (+`muntins` for French) · `sliding` · default (N panes + mullions). Post-steps add
+  `bifold` fold-hardware, `astragal`, `hinges`, and `handles`.
+- **Reusable sub-assemblies (helpers):** `_border_bars` (3- or 4-sided bar border, `sill=` toggle),
+  `_panelled_leaf` (2 stiles + 3 rails + 2 recessed panels — recess = a thinner centred panel solid,
+  no boolean/hollow), `_muntin_grid` (lock rail + applied divided-lite bars), `_hinge_stack`
+  (n butt-hinge knuckles, one-face proud), `_build_handles` (knob / pull).
 - **Scale-correctness:** every linear dimension comes from a `dims` dict **in file units** —
   `dims_in_units(unit_scale)` converts the canonical mm `CANON` table to the file's units. NO
-  hard-coded mm in the build path (a 130 mm lever is the right fraction of a foot at feet scale, not
-  130 feet). Clamps keep features non-degenerate on small / odd-aspect doors (frame ≤ 0.2·min(W,H);
-  mullion ≤ 0.5·inner_w/n so panes stay positive; handles clamped inside their leaf).
+  hard-coded mm in the build path; positional **ratios are inlined literals** (dimensionless) so they
+  are never unit-converted. Clamps keep features non-degenerate on small / odd-aspect doors at FEET
+  scale (frame ≤ 0.2·min(W,H); stile/rail/mullion/sash ≤ fractions of the leaf; hardware clamped
+  inside its leaf; recessed-panel depth = 0.5·leaf depth). A feet-scale stress test (nominal / narrow
+  / wide) confirms no degenerate dims across all 16 types.
+- **Role → colour bucket** is centralised in `bucket_for` / `_ROLE_BUCKET` (+`GLASS_ROLES`), the
+  single source of truth used by BOTH the golden generator and the converter: `frame` (lining /
+  stiles / rails / mullions / muntins / casing / astragal / sill / divider), `slab` (wood leaf /
+  plank), `metal` (handle / pull / knob / track / roller / hinge / guide / strap / track_guide /
+  standoff), `glass` (glazing; also `panel` when glazed).
 
 ---
 
-## 4. First-pass simplifications & viewer-review items (refine after architectural review)
+## 4. Per-type design (enriched 2026-06-26 — was a deliberately-simplified first pass)
 
-Decision #3 (clean & simplified first pass) — recorded so we tune after viewer review:
-- **Bi-fold / combo panels are flat & coplanar** (NOT articulated/folded). "side_by_side" just
-  divides the inner width into N panels with mullions.
-- **Barn** = leaf + a straight overhead track bar + 2 roller tabs (rollers overlap the track band so
-  they read as connected). **DOOR_BARN is modelled as 2 leaves on one track** vs DOOR_SINGLE_BARN's
-  1 leaf — *confirm the 1-leaf-vs-2-leaf interpretation of the PDF "BARN" / "BARN+SINGLE" split.*
-- **Sliding** = leaf + a head-rail bar across the top of the opening.
-- **Lining is a full 4-sided border (4 solid bars)** (real frames are usually 3-sided / no sill).
-- **DOOR_POCKET's pull is proud of both faces**; a real pocket pull is recessed.
-- **DOOR_OPENING** = a cased opening (lining frame only, no leaf/handle).
+Each type now carries realistic, previously-omitted components (all solid axis-aligned rect boxes):
+- **`DOOR_SINGLE` / `DOOR_INTERIOR_SINGLE`** — rail-and-stile panelled leaf (2 stiles + top/lock/
+  bottom rails + 2 recessed panels) + knob; the exterior single also shows 3 hinges (interior omits
+  them for a cleaner leaf).
+- **`DOOR_SINGLE_FLUSH`** — intentionally plain flush slab, but now hung-looking: 3 hinges + knob.
+- **`DOOR_DOUBLE`** — two panelled leaves + an **astragal** over the meeting joint + 3 hinges/leaf + 2 knobs.
+- **`DOOR_INTERIOR_DOUBLE`** — two **French** glazed leaves with a **divided-lite muntin grid**
+  (mid-height lock rail + 1 vertical + 2 horizontal applied bars over a single transparent lite) +
+  3 hinges/leaf + 2 knobs.
+- **`DOOR_POCKET`** — opening half (3-sided lining) + leaf retracted into the pocket half + a
+  single-face (inward) pull. *(Still flagged: a real pocket pull is recessed.)*
+- **`DOOR_SLIDING`** — two framed-glass sashes overlapping at the centre on two depth tracks (mirrors
+  the real San Juan Cypress door). ✅ verified in Gaudi.
+- **`DOOR_BARN` / `DOOR_SINGLE_BARN`** — ledged plank leaf/leaves (slab + 3 horizontal battens, NO
+  diagonal brace) hung from an overhead **track** (+2 end stops) by 2 **strap hangers**/leaf, with a
+  floor **guide** and a bar **pull**. *(Still flagged: confirm the 2-leaf-vs-1-leaf BARN split.)*
+- **`DOOR_SHOWER`** — semi-frameless: slim pivot **jamb** + low **threshold** + a large thin glass
+  lite + 3 pivot **hinge blocks** + a tall **towel-bar pull** standing off the glass on 2 standoffs.
+- **`DOOR_BIFOLDING_GLASS` / `…_2_PANEL` / `…_SWING_COMBO`** — per-leaf framed leaves (coplanar) +
+  **fold-hinge knuckles** at each leaf joint + a **top track guide** + pull. *(Leaves kept coplanar —
+  true out-of-plane articulation is deferred to avoid an in-wall converted door poking through the wall.)*
+- **`DOOR_SLIDE_AND_SWING` / `DOOR_SLIDING_SWING_COMBO`** — a central divider with a **framed sliding
+  sash** (front track + 2 rollers + floor guide + bar pull) on one half and a **panelled swing leaf**
+  (rails + recessed panels + 2 hinges + knob) on the other.
+- **`DOOR_OPENING`** — a 3-sided lining + **architrave casing** (head + 2 legs, butt-jointed) on both
+  wall faces.
+
+Adversarially reviewed (5 lenses → independent verification): two findings fixed — the barn plank
+body role (`panel`→`plank`) and the combo sliding hardware (now FRONT-mounted, not proud of both
+faces). All 16 goldens validate clean with matching solid counts; tester 4/4; converter verify ALL
+PASS on the 4 ADUs (0 new validate errors, 0.0 mm face drift). **Awaiting Gaudi review of the 15
+enriched goldens** (DOOR_SLIDING already confirmed).
 
 ---
 

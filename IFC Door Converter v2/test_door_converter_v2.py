@@ -314,7 +314,10 @@ def _parametric_resize_check(c, formx_type, axis, label):
 def layer_D_manipulate(c, out, base_err):
     # PARAMETRIC RESIZE — exercise the shared recipe (it authored every rebuilt door) along each
     # face axis, for a single-leaf and a 2-leaf type. Border held constant = real 'make it wider'.
-    for ft in ("DOOR_SINGLE", "DOOR_DOUBLE"):
+    # NOTE: the 2-leaf probe is DOOR_INTERIOR_DOUBLE (leaf-frame → border = frame_thk+leaf_frame_thk,
+    # constant across the range). DOOR_DOUBLE is now panelled, whose per-leaf stile width hits its
+    # proportional clamp on narrow leaves, so its lining→panel border is NOT scale-invariant.
+    for ft in ("DOOR_SINGLE", "DOOR_INTERIOR_DOUBLE"):
         _parametric_resize_check(c, ft, 0, f"width/{ft}")
         _parametric_resize_check(c, ft, 1, f"height/{ft}")
 
@@ -398,16 +401,38 @@ def _formx_type_of(d):
 def _expected_item_count(knobs):
     """Body solid count a recipe must produce — mirrors golden_door_geometry.build_door_items."""
     n = int(knobs.get("panels", 1))
+    if knobs.get("shower"):
+        # threshold + pivot jamb + glass + 3 hinges + towel pull + 2 standoffs = 9. No outer lining.
+        return 1 + 1 + 1 + 3 + 1 + 2
+    if knobs.get("combo"):
+        # divider(1) + sliding sash[4 frame+1 glass] + track(1)+2 rollers+guide(1)+pull(1) +
+        # panelled swing leaf(7) + knob(1) + 2 hinges + outer lining(4) = 25. Self-contained handles.
+        return 4 + 1 + (5 + 1 + 2 + 1 + 1) + (7 + 1 + 2)
+    if knobs.get("barn"):
+        # per leaf: plank slab + 3 ledger battens + 2 straps + pull = 7; shared: track + 2 stops +
+        # floor guide = 4. No lining. Self-contained pull.
+        return 7 * n + 4
+    if knobs.get("casing"):
+        # 3-sided lining (head + 2 jambs) + architrave (head + 2 legs) on both faces = 3 + 2*3 = 9.
+        return 3 + 2 * 3
     if knobs.get("pocket"):
         items = 3 + 1                             # 3-sided opening lining (head+2 jambs, no sill) + retracted leaf
+    elif knobs.get("panelled") and n > 0:
+        items = 4 + n * 7                         # outer lining + per-leaf (2 stiles + 3 rails + 2 recessed panels)
     elif (knobs.get("leaf_frame") or knobs.get("sliding")) and n > 0:
         items = 4 + n * 5                         # outer lining + per-sash/leaf (4 frame bars + 1 infill); no mullion
+        if knobs.get("muntins"):
+            items += 4 * n                        # per glazed leaf: lock rail + 1 vertical + 2 horizontal muntins
     else:
         items = 4 + n + max(0, n - 1)             # 4-bar lining + panels + (n-1) mullions
     if knobs.get("head_rail") and n > 0:
         items += 1                                # head rail
-    if knobs.get("barn_track"):
-        items += 3                                # track + 2 rollers
+    if knobs.get("astragal") and n >= 2:
+        items += 1                                # meeting-joint astragal cover bar
+    if knobs.get("bifold") and n >= 2:
+        items += 2 * (n - 1) + 1                  # 2 fold-hinge knuckles per joint + 1 top track guide
+    if knobs.get("hinges") and n > 0:
+        items += 3 * n                            # 3 butt hinges per leaf
     h = knobs.get("handle", "none")
     if h == "lever":
         items += 2 if n >= 2 else 1
